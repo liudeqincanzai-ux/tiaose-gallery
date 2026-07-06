@@ -3,66 +3,38 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="调色摄影作品相册。">
-    <title>调色 | 摄影作品相册</title>
+    <meta name="description" content="摄影作品集。">
+    <title>调色 | 摄影作品集</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="#top">调色</a>
-      <nav aria-label="主导航">
-        <a href="#gallery">作品</a>
-        <a href="#contact">联系</a>
-      </nav>
+    <header class="site-header" data-header>
+      <a class="brand" href="#top" data-brand>调色</a>
+      <nav data-nav aria-label="主导航"></nav>
     </header>
 
     <main id="top">
-      <section class="hero">
-        <img src="photos/photo-001.jpg" alt="调色摄影作品封面">
-        <div class="hero-overlay"></div>
-        <div class="hero-copy">
-          <p>Photo Collection</p>
-          <h1>调色</h1>
-          <span>44 张精选影像</span>
-        </div>
-      </section>
-
-      <section class="intro">
-        <div>
-          <p class="kicker">Gallery</p>
-          <h2>以光线、色彩和现场感构成的影像记录</h2>
-        </div>
-        <p>这里展示来自本地“调色”文件夹的照片网页版，适合快速浏览和分享。</p>
-      </section>
-
-      <section class="gallery-section" id="gallery" aria-labelledby="gallery-title">
-        <div class="section-heading">
-          <p class="kicker">Works</p>
-          <h2 id="gallery-title">全部作品</h2>
-        </div>
-        <div class="gallery" data-gallery></div>
-      </section>
-
-      <section class="contact" id="contact">
-        <p class="kicker">Contact</p>
-        <h2>联系摄影师</h2>
-        <a href="mailto:hello@example.com">hello@example.com</a>
-      </section>
+      <section class="hero" data-hero></section>
+      <div data-sections></div>
     </main>
 
-    <footer>
-      <p>© 2026 调色. All rights reserved.</p>
+    <footer class="site-footer">
+      <p data-footer>© 2026 调色. All rights reserved.</p>
       <a href="#top">返回顶部</a>
     </footer>
 
+    <a class="edit-fab" href="admin/" rel="nofollow">后台</a>
+
     <dialog class="lightbox" data-lightbox>
-      <button class="lightbox-close" type="button" data-close aria-label="关闭">×</button>
+      <button class="lightbox-close" type="button" data-close-lightbox aria-label="关闭">×</button>
       <button class="lightbox-nav lightbox-prev" type="button" data-prev aria-label="上一张">‹</button>
       <img data-lightbox-image src="photos/photo-001.jpg" alt="">
       <button class="lightbox-nav lightbox-next" type="button" data-next aria-label="下一张">›</button>
-      <p data-lightbox-caption>作品 01 / 44</p>
+      <p data-lightbox-caption>作品 01</p>
     </dialog>
 
+    <script src="photos.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

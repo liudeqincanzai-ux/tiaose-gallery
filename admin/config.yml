@@ -1,0 +1,80 @@
+backend:
+  name: github
+  repo: liudeqincanzai-ux/tiaose-gallery
+  branch: main
+  use_graphql: true
+
+media_folder: "photos"
+public_folder: "photos"
+site_url: "https://liudeqincanzai-ux.github.io/tiaose-gallery/"
+display_url: "https://liudeqincanzai-ux.github.io/tiaose-gallery/"
+search: false
+
+collections:
+  - name: "site"
+    label: "网站内容"
+    files:
+      - name: "homepage"
+        label: "首页"
+        file: "content/site.json"
+        format: "json"
+        fields:
+          - { label: "网站名称", name: "siteName", widget: "string" }
+          - { label: "浏览器标题", name: "browserTitle", widget: "string" }
+          - { label: "页脚文字", name: "footerText", widget: "string" }
+          - label: "主题颜色"
+            name: "theme"
+            widget: "object"
+            fields:
+              - { label: "背景色", name: "background", widget: "color" }
+              - { label: "文字色", name: "text", widget: "color" }
+              - { label: "强调色", name: "accent", widget: "color" }
+              - { label: "按钮色", name: "button", widget: "color" }
+          - label: "首页封面"
+            name: "hero"
+            widget: "object"
+            fields:
+              - { label: "小标题", name: "eyebrow", widget: "string", required: false }
+              - { label: "大标题", name: "title", widget: "string" }
+              - { label: "副标题", name: "subtitle", widget: "string", required: false }
+              - { label: "封面图", name: "cover", widget: "image" }
+          - label: "页面板块"
+            name: "sections"
+            widget: "list"
+            summary: "{{fields.title}}"
+            fields:
+              - label: "板块 ID"
+                name: "id"
+                widget: "string"
+                hint: "建议用英文或拼音，例如 selected、story、gallery、contact。"
+              - label: "板块类型"
+                name: "type"
+                widget: "select"
+                options:
+                  - { label: "精选横滑", value: "spotlight" }
+                  - { label: "主题横滑", value: "story" }
+                  - { label: "作品展示", value: "gallery" }
+                  - { label: "联系信息", value: "contact" }
+              - { label: "小标题", name: "kicker", widget: "string", required: false }
+              - { label: "标题", name: "title", widget: "string" }
+              - { label: "说明文字", name: "text", widget: "text", required: false }
+              - label: "展示样式"
+                name: "layout"
+                widget: "select"
+                required: false
+                options:
+                  - { label: "横向滑动", value: "rail" }
+                  - { label: "瀑布流", value: "masonry" }
+                  - { label: "整齐网格", value: "grid" }
+                  - { label: "杂志拼贴", value: "magazine" }
+              - label: "图片"
+                name: "images"
+                widget: "list"
+                required: false
+                summary: "{{fields.title}}"
+                fields:
+                  - { label: "图片文件", name: "image", widget: "image" }
+                  - { label: "图片标题", name: "title", widget: "string", required: false }
+              - { label: "作品展示使用全部图片", name: "useAllPhotos", widget: "boolean", required: false, default: false }
+              - { label: "联系按钮文字", name: "contactText", widget: "string", required: false }
+              - { label: "联系链接", name: "contactUrl", widget: "string", required: false }

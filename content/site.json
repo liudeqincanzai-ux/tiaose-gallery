@@ -1,0 +1,69 @@
+{
+  "siteName": "调色",
+  "browserTitle": "调色 | 摄影作品集",
+  "footerText": "© 2026 调色. All rights reserved.",
+  "theme": {
+    "background": "#f8f5ef",
+    "text": "#171717",
+    "accent": "#b45f2a",
+    "button": "#25493f"
+  },
+  "hero": {
+    "eyebrow": "Photo Collection",
+    "title": "调色",
+    "subtitle": "摄影作品集",
+    "cover": "photos/photo-001.jpg"
+  },
+  "sections": [
+    {
+      "id": "selected",
+      "type": "spotlight",
+      "kicker": "Featured",
+      "title": "精选作品",
+      "text": "用色彩、光线和现场感组织一次观看。",
+      "layout": "rail",
+      "images": [
+        { "image": "photos/photo-001.jpg", "title": "作品 01" },
+        { "image": "photos/photo-002.jpg", "title": "作品 02" },
+        { "image": "photos/photo-003.jpg", "title": "作品 03" },
+        { "image": "photos/photo-004.jpg", "title": "作品 04" },
+        { "image": "photos/photo-005.jpg", "title": "作品 05" }
+      ]
+    },
+    {
+      "id": "story",
+      "type": "story",
+      "kicker": "Story",
+      "title": "主题故事",
+      "text": "这里可以放一组拍摄主题、项目说明、客户案例或旅行记录。",
+      "layout": "rail",
+      "images": [
+        { "image": "photos/photo-004.jpg", "title": "作品 04" },
+        { "image": "photos/photo-005.jpg", "title": "作品 05" },
+        { "image": "photos/photo-006.jpg", "title": "作品 06" },
+        { "image": "photos/photo-007.jpg", "title": "作品 07" },
+        { "image": "photos/photo-008.jpg", "title": "作品 08" },
+        { "image": "photos/photo-009.jpg", "title": "作品 09" }
+      ]
+    },
+    {
+      "id": "gallery",
+      "type": "gallery",
+      "kicker": "Works",
+      "title": "全部作品",
+      "text": "",
+      "layout": "masonry",
+      "useAllPhotos": true,
+      "images": []
+    },
+    {
+      "id": "contact",
+      "type": "contact",
+      "kicker": "Contact",
+      "title": "联系摄影师",
+      "text": "品牌、肖像、城市纪实或长期项目，都可以先从一封简短邮件开始。",
+      "contactText": "hello@example.com",
+      "contactUrl": "mailto:hello@example.com"
+    }
+  ]
+}
