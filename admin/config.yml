@@ -6,8 +6,8 @@ backend:
 
 media_folder: "photos"
 public_folder: "photos"
-site_url: "https://liudeqincanzai-ux.github.io/tiaose-gallery/"
-display_url: "https://liudeqincanzai-ux.github.io/tiaose-gallery/"
+site_url: "https://banjing.netlify.app/"
+display_url: "https://banjing.netlify.app/"
 search: false
 
 collections:
