@@ -41,6 +41,7 @@ const dom = {
   refEmpty: document.getElementById("refEmpty"),
   targetEmpty: document.getElementById("targetEmpty"),
   resultEmpty: document.getElementById("resultEmpty"),
+  hslPanels: document.getElementById("hslPanels"),
 };
 
 const state = {
@@ -91,6 +92,21 @@ const HSL_CENTERS = {
   purple: 272 / 360,
   magenta: 318 / 360,
 };
+const HSL_LABELS = {
+  red: "红色",
+  orange: "橙色",
+  yellow: "黄色",
+  green: "绿色",
+  aqua: "浅绿色",
+  blue: "蓝色",
+  purple: "紫色",
+  magenta: "洋红",
+};
+const HSL_AXES = [
+  { key: "h", title: "色相", hint: "Hue" },
+  { key: "s", title: "饱和度", hint: "Saturation" },
+  { key: "l", title: "明度", hint: "Luminance" },
+];
 const SAMPLE_APPEND_CHUNK = 12000;
 
 function clamp(value, min, max) {
@@ -148,6 +164,69 @@ function defaultParams() {
   };
 }
 
+function hueCss(channel, shift = 0, saturation = 76, lightness = 48) {
+  const hue = Math.round((((HSL_CENTERS[channel] + shift) % 1 + 1) % 1) * 360);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
+function hslGradient(channel, axis) {
+  if (axis === "h") {
+    return `linear-gradient(90deg, ${hueCss(channel, -30 / 360)}, ${hueCss(channel)}, ${hueCss(channel, 30 / 360)})`;
+  }
+  if (axis === "s") {
+    return `linear-gradient(90deg, ${hueCss(channel, 0, 10, 52)}, ${hueCss(channel, 0, 58, 50)}, ${hueCss(channel, 0, 96, 48)})`;
+  }
+  return `linear-gradient(90deg, ${hueCss(channel, 0, 70, 18)}, ${hueCss(channel, 0, 70, 50)}, ${hueCss(channel, 0, 86, 78)})`;
+}
+
+function renderHslControls() {
+  if (!dom.hslPanels) return;
+  dom.hslPanels.innerHTML = "";
+  for (const axis of HSL_AXES) {
+    const section = document.createElement("div");
+    section.className = "hsl-section";
+    const title = document.createElement("div");
+    title.className = "hsl-section-title";
+    title.innerHTML = `<strong>${axis.title}</strong><span>${axis.hint}</span>`;
+    section.appendChild(title);
+
+    for (const channel of HSL_CHANNELS) {
+      const row = document.createElement("label");
+      row.className = "hsl-row";
+
+      const name = document.createElement("span");
+      name.className = "hsl-name";
+      name.innerHTML = `<span class="swatch ${channel}"></span>${HSL_LABELS[channel]}`;
+
+      const track = document.createElement("span");
+      track.className = "hsl-track";
+      track.style.setProperty("--track-gradient", hslGradient(channel, axis.key));
+      track.innerHTML = '<span class="range-end min">-100</span><span class="range-end max">100</span>';
+
+      const current = document.createElement("span");
+      current.className = "hsl-current";
+      current.dataset.hslValueFor = `${channel}-${axis.key}`;
+      current.textContent = "0";
+
+      const input = document.createElement("input");
+      input.className = "hsl-slider";
+      input.type = "range";
+      input.min = "-100";
+      input.max = "100";
+      input.value = "0";
+      input.dataset.channel = channel;
+      input.dataset.axis = axis.key;
+      input.setAttribute("aria-label", `${HSL_LABELS[channel]}${axis.title}`);
+
+      track.append(current, input);
+      row.append(name, track);
+      section.appendChild(row);
+    }
+
+    dom.hslPanels.appendChild(section);
+  }
+}
+
 function appendSamples(target, samples) {
   for (let i = 0; i < samples.length; i += SAMPLE_APPEND_CHUNK) {
     const end = Math.min(samples.length, i + SAMPLE_APPEND_CHUNK);
@@ -176,6 +255,32 @@ function mix(a, b, t) {
 
 function luma(r, g, b) {
   return r * 0.2126 + g * 0.7152 + b * 0.0722;
+}
+
+function srgbUnitToLinear(value) {
+  const v = clamp01(value);
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+function linearUnitToSrgb(value) {
+  const v = clamp01(value);
+  return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+}
+
+function srgbByteToLinear(value) {
+  return srgbUnitToLinear(value / 255);
+}
+
+function linearUnitToSrgbByte(value) {
+  return Math.round(clamp01(linearUnitToSrgb(value)) * 255);
+}
+
+function getSrgb2dContext(canvas, options = {}) {
+  try {
+    return canvas.getContext("2d", { colorSpace: "srgb", ...options }) || canvas.getContext("2d", options);
+  } catch {
+    return canvas.getContext("2d", options);
+  }
 }
 
 function smoothstep(edge0, edge1, x) {
@@ -444,9 +549,9 @@ function samplesFromImageData(imageData, maxSamples) {
     const idx = p * 4;
     const a = data[idx + 3] / 255;
     if (a < 0.86) continue;
-    const r = data[idx] / 255;
-    const g = data[idx + 1] / 255;
-    const b = data[idx + 2] / 255;
+    const r = srgbByteToLinear(data[idx]);
+    const g = srgbByteToLinear(data[idx + 1]);
+    const b = srgbByteToLinear(data[idx + 2]);
     const y = luma(r, g, b);
     if (y < 0.015 || y > 0.985) continue;
     const value = Math.max(r, g, b);
@@ -686,7 +791,7 @@ function buildLocalMap(imageData, gridSize = 28) {
       const gx = Math.min(gridW - 1, Math.floor((x * gridW) / width));
       const idx = gy * gridW + gx;
       const p = (y * width + x) * 4;
-      values[idx] += luma(data[p] / 255, data[p + 1] / 255, data[p + 2] / 255);
+      values[idx] += luma(srgbByteToLinear(data[p]), srgbByteToLinear(data[p + 1]), srgbByteToLinear(data[p + 2]));
       counts[idx] += 1;
     }
   }
@@ -918,7 +1023,7 @@ async function loadImageToImageData(file, maxEdge) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const ctx = getSrgb2dContext(canvas, { willReadFrequently: true });
     ctx.drawImage(img, 0, 0, width, height);
     return { canvas, imageData: ctx.getImageData(0, 0, width, height), width, height, name: file.name };
   } finally {
@@ -950,6 +1055,13 @@ function updateAdjustmentLabels() {
     if (!valueEl) continue;
     if (param === "exposure") valueEl.textContent = (Number(input.value) / 100).toFixed(2);
     else valueEl.textContent = String(Number(input.value));
+  }
+}
+
+function updateHslLabels() {
+  for (const input of document.querySelectorAll(".hsl-slider")) {
+    const valueEl = document.querySelector(`[data-hsl-value-for="${input.dataset.channel}-${input.dataset.axis}"]`);
+    if (valueEl) valueEl.textContent = String(Number(input.value));
   }
 }
 
@@ -994,6 +1106,7 @@ function applyParamsToControls(params) {
     input.value = next.hsl?.[channel]?.[axis] || 0;
   }
   updateAdjustmentLabels();
+  updateHslLabels();
 }
 
 function saveCurrentParams() {
@@ -1051,7 +1164,7 @@ function updateActiveThumbs(stripEl, activeIndex) {
 }
 
 function clearCanvas(canvas) {
-  const ctx = canvas.getContext("2d");
+  const ctx = getSrgb2dContext(canvas);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
@@ -1181,7 +1294,7 @@ function canvasToBlob(canvas, format, quality) {
 }
 
 function canvasToImageData(canvas) {
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const ctx = getSrgb2dContext(canvas, { willReadFrequently: true });
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
@@ -1189,7 +1302,7 @@ function scaleCanvasToSize(sourceCanvas, width, height) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext("2d");
+  const ctx = getSrgb2dContext(canvas);
   ctx.drawImage(sourceCanvas, 0, 0, width, height);
   return canvas;
 }
@@ -1238,12 +1351,12 @@ function selectOutput(index, syncTarget = true) {
   state.activeOutputIndex = index;
 
   const sourceCanvas = output.sourcePreviewCanvas || output.sourceCanvas || output.canvas;
-  const beforeCtx = dom.beforeCanvas.getContext("2d");
+  const beforeCtx = getSrgb2dContext(dom.beforeCanvas);
   dom.beforeCanvas.width = sourceCanvas.width;
   dom.beforeCanvas.height = sourceCanvas.height;
   beforeCtx.drawImage(sourceCanvas, 0, 0);
 
-  const resultCtx = dom.resultCanvas.getContext("2d");
+  const resultCtx = getSrgb2dContext(dom.resultCanvas);
   dom.resultCanvas.width = output.canvas.width;
   dom.resultCanvas.height = output.canvas.height;
   resultCtx.drawImage(output.canvas, 0, 0);
@@ -1273,7 +1386,7 @@ async function renderManualAdjustmentsToCanvas(baseImageData, settings, targetCa
   const canvas = targetCanvas || document.createElement("canvas");
   canvas.width = baseImageData.width;
   canvas.height = baseImageData.height;
-  const ctx = canvas.getContext("2d");
+  const ctx = getSrgb2dContext(canvas);
   if (!ctx) throw new Error("当前浏览器无法创建图片处理画布。");
 
   const out = ctx.createImageData(baseImageData.width, baseImageData.height);
@@ -1327,7 +1440,7 @@ async function processTarget(file, refStats, index, total, imageParams) {
   const baseCanvas = document.createElement("canvas");
   baseCanvas.width = loaded.width;
   baseCanvas.height = loaded.height;
-  const ctx = baseCanvas.getContext("2d");
+  const ctx = getSrgb2dContext(baseCanvas);
   if (!ctx) {
     throw new Error("当前浏览器无法创建图片处理画布。");
   }
@@ -1339,15 +1452,15 @@ async function processTarget(file, refStats, index, total, imageParams) {
     const i = p * 4;
     const x = p % loaded.width;
     const y = Math.floor(p / loaded.width);
-    const r = loaded.imageData.data[i] / 255;
-    const g = loaded.imageData.data[i + 1] / 255;
-    const b = loaded.imageData.data[i + 2] / 255;
+    const r = srgbByteToLinear(loaded.imageData.data[i]);
+    const g = srgbByteToLinear(loaded.imageData.data[i + 1]);
+    const b = srgbByteToLinear(loaded.imageData.data[i + 2]);
     const a = loaded.imageData.data[i + 3] / 255;
     const localY = localMap ? sampleLocalMap(localMap, x, y) : 0.5;
     const px = matchPixel(r, g, b, a, refStats, targetStats, toneCurve, settings, params, localY, localWeight);
-    out.data[i] = Math.round(px[0] * 255);
-    out.data[i + 1] = Math.round(px[1] * 255);
-    out.data[i + 2] = Math.round(px[2] * 255);
+    out.data[i] = linearUnitToSrgbByte(px[0]);
+    out.data[i + 1] = linearUnitToSrgbByte(px[1]);
+    out.data[i + 2] = linearUnitToSrgbByte(px[2]);
     out.data[i + 3] = Math.round(px[3] * 255);
     if (p % CHUNK_PIXELS === 0) {
       const localProgress = p / pixelCount;
@@ -1672,7 +1785,10 @@ function bindEvents() {
     });
   }
   for (const input of document.querySelectorAll(".hsl-slider")) {
-    input.addEventListener("input", scheduleFastPreviewUpdate);
+    input.addEventListener("input", () => {
+      updateHslLabels();
+      scheduleFastPreviewUpdate();
+    });
   }
   dom.compareStage.addEventListener("pointerdown", (event) => {
     if (!state.activeOutput) return;
@@ -1713,5 +1829,6 @@ function bindEvents() {
   });
 }
 
+renderHslControls();
 bindEvents();
 refreshFileLists();

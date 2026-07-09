@@ -150,52 +150,7 @@
         <section class="panel hsl-panel">
           <details open>
             <summary>HSL 调整</summary>
-            <div class="hsl-grid" id="hslGrid">
-              <div class="hsl-head">颜色</div>
-              <div class="hsl-head">色相</div>
-              <div class="hsl-head">饱和度</div>
-              <div class="hsl-head">明度</div>
-
-              <div class="hsl-name"><span class="swatch red"></span>红色</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="red" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="red" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="red" data-axis="l" />
-
-              <div class="hsl-name"><span class="swatch orange"></span>橙色</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="orange" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="orange" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="orange" data-axis="l" />
-
-              <div class="hsl-name"><span class="swatch yellow"></span>黄色</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="yellow" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="yellow" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="yellow" data-axis="l" />
-
-              <div class="hsl-name"><span class="swatch green"></span>绿色</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="green" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="green" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="green" data-axis="l" />
-
-              <div class="hsl-name"><span class="swatch aqua"></span>浅绿色</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="aqua" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="aqua" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="aqua" data-axis="l" />
-
-              <div class="hsl-name"><span class="swatch blue"></span>蓝色</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="blue" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="blue" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="blue" data-axis="l" />
-
-              <div class="hsl-name"><span class="swatch purple"></span>紫色</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="purple" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="purple" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="purple" data-axis="l" />
-
-              <div class="hsl-name"><span class="swatch magenta"></span>洋红</div>
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="magenta" data-axis="h" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="magenta" data-axis="s" />
-              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="magenta" data-axis="l" />
-            </div>
+            <div class="hsl-panels" id="hslPanels"></div>
           </details>
         </section>
 
@@ -254,6 +209,8 @@
             <div class="preview-media compare-stage" id="compareStage">
               <canvas id="beforeCanvas" class="compare-canvas compare-before"></canvas>
               <canvas id="resultCanvas" class="compare-canvas compare-after"></canvas>
+              <span class="compare-label compare-label-after">后</span>
+              <span class="compare-label compare-label-before">前</span>
               <div class="compare-handle" id="compareHandle" role="slider" aria-label="原图和仿色结果对比" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
                 <span></span>
               </div>
