@@ -31,7 +31,10 @@ const dom = {
   syncParamsBtn: document.getElementById("syncParamsBtn"),
   refPreview: document.getElementById("refPreview"),
   targetPreview: document.getElementById("targetPreview"),
+  beforeCanvas: document.getElementById("beforeCanvas"),
   resultCanvas: document.getElementById("resultCanvas"),
+  compareStage: document.getElementById("compareStage"),
+  compareHandle: document.getElementById("compareHandle"),
   refThumbs: document.getElementById("refThumbs"),
   targetThumbs: document.getElementById("targetThumbs"),
   resultThumbs: document.getElementById("resultThumbs"),
@@ -44,12 +47,18 @@ const state = {
   references: [],
   targets: [],
   outputs: [],
+  refStats: null,
   activeOutput: null,
   activeRefIndex: 0,
   activeTargetIndex: 0,
   activeOutputIndex: -1,
   targetParams: [],
   copiedParams: null,
+  liveTimer: null,
+  liveBusy: false,
+  liveQueued: false,
+  compareDragging: false,
+  comparePosition: 50,
   previewUrls: {
     ref: null,
     target: null,
@@ -1036,6 +1045,23 @@ function updateActiveThumbs(stripEl, activeIndex) {
   }
 }
 
+function clearCanvas(canvas) {
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function setComparePosition(value) {
+  state.comparePosition = clamp(value, 0, 100);
+  dom.compareStage.style.setProperty("--compare-position", `${state.comparePosition}%`);
+  dom.compareHandle.setAttribute("aria-valuenow", String(Math.round(state.comparePosition)));
+}
+
+function updateCompareFromClientX(clientX) {
+  const rect = dom.compareStage.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  setComparePosition(((clientX - rect.left) / rect.width) * 100);
+}
+
 function renderFileThumbs(files, stripEl, kind, activeIndex, onSelect) {
   revokeThumbUrls(kind);
   stripEl.innerHTML = "";
@@ -1095,13 +1121,14 @@ function selectReference(index) {
   updateActiveThumbs(dom.refThumbs, state.activeRefIndex);
 }
 
-function selectTarget(index) {
+function selectTarget(index, syncOutput = true) {
   if (state.targets.length && index !== state.activeTargetIndex) saveCurrentParams();
   ensureTargetParams();
   state.activeTargetIndex = clamp(index, 0, Math.max(0, state.targets.length - 1));
   setPreview(dom.targetPreview, state.targets[state.activeTargetIndex], ".preview-frame", "target");
   updateActiveThumbs(dom.targetThumbs, state.activeTargetIndex);
   applyParamsToControls(state.targetParams[state.activeTargetIndex] || defaultParams());
+  if (syncOutput && state.outputs[state.activeTargetIndex]) selectOutput(state.activeTargetIndex, false);
 }
 
 function refreshFileLists() {
@@ -1125,8 +1152,9 @@ function clearOutputs() {
   dom.downloadBtn.disabled = true;
   dom.downloadAllBtn.disabled = true;
   dom.resultCanvas.closest(".preview-frame").classList.remove("has-media");
-  const ctx = dom.resultCanvas.getContext("2d");
-  ctx.clearRect(0, 0, dom.resultCanvas.width, dom.resultCanvas.height);
+  clearCanvas(dom.beforeCanvas);
+  clearCanvas(dom.resultCanvas);
+  setComparePosition(50);
 }
 
 function outputName(fileName, format) {
@@ -1153,16 +1181,25 @@ function downloadUrl(url, name) {
   a.remove();
 }
 
-function selectOutput(index) {
+function selectOutput(index, syncTarget = true) {
   const output = state.outputs[index];
   if (!output) return;
+  if (syncTarget && state.targets[index]) selectTarget(index, false);
   state.activeOutput = output;
   state.activeOutputIndex = index;
-  const ctx = dom.resultCanvas.getContext("2d");
+
+  const sourceCanvas = output.sourceCanvas || output.canvas;
+  const beforeCtx = dom.beforeCanvas.getContext("2d");
+  dom.beforeCanvas.width = sourceCanvas.width;
+  dom.beforeCanvas.height = sourceCanvas.height;
+  beforeCtx.drawImage(sourceCanvas, 0, 0);
+
+  const resultCtx = dom.resultCanvas.getContext("2d");
   dom.resultCanvas.width = output.canvas.width;
   dom.resultCanvas.height = output.canvas.height;
-  ctx.drawImage(output.canvas, 0, 0);
+  resultCtx.drawImage(output.canvas, 0, 0);
   dom.resultCanvas.closest(".preview-frame").classList.add("has-media");
+  setComparePosition(state.comparePosition);
   dom.downloadBtn.disabled = false;
   updateActiveThumbs(dom.resultThumbs, index);
 }
@@ -1172,6 +1209,15 @@ function addOutput(output) {
   renderOutputThumbs();
   selectOutput(index);
   dom.downloadAllBtn.disabled = false;
+}
+
+function replaceOutput(index, output) {
+  const oldOutput = state.outputs[index];
+  if (oldOutput?.url) URL.revokeObjectURL(oldOutput.url);
+  state.outputs[index] = output;
+  renderOutputThumbs();
+  selectOutput(index, false);
+  dom.downloadAllBtn.disabled = state.outputs.length === 0;
 }
 
 async function analyzeReferences(files) {
@@ -1235,11 +1281,11 @@ async function processTarget(file, refStats, index, total, imageParams) {
   const blob = await canvasToBlob(canvas, format, quality);
   const name = outputName(file.name, format);
   const url = URL.createObjectURL(blob);
-  return { canvas, blob, url, name };
+  return { canvas, sourceCanvas: loaded.canvas, blob, url, name, params: deepClone(settings) };
 }
 
 async function processAll() {
-  if (state.busy) return;
+  if (state.busy || state.liveBusy) return;
   if (!state.references.length) {
     setStatus("请先选择参考图。", 0);
     return;
@@ -1261,9 +1307,9 @@ async function processAll() {
   ensureTargetParams();
   setBusy(true);
   try {
-    const refStats = await analyzeReferences(state.references);
+    state.refStats = await analyzeReferences(state.references);
     for (let i = 0; i < state.targets.length; i += 1) {
-      const output = await processTarget(state.targets[i], refStats, i, state.targets.length, state.targetParams[i] || readParamsFromControls());
+      const output = await processTarget(state.targets[i], state.refStats, i, state.targets.length, state.targetParams[i] || readParamsFromControls());
       addOutput(output);
     }
     setStatus(`处理完成：${state.targets.length} 张。`, 100);
@@ -1275,6 +1321,52 @@ async function processAll() {
   }
 }
 
+function canLiveUpdate() {
+  return Boolean(
+    state.refStats &&
+      state.targets[state.activeTargetIndex] &&
+      state.outputs[state.activeTargetIndex] &&
+      !state.busy
+  );
+}
+
+function scheduleLivePreviewUpdate() {
+  saveCurrentParams();
+  if (!canLiveUpdate()) return;
+  clearTimeout(state.liveTimer);
+  state.liveTimer = setTimeout(() => {
+    refreshActiveOutput();
+  }, 260);
+}
+
+async function refreshActiveOutput() {
+  if (!canLiveUpdate()) return;
+  if (state.liveBusy) {
+    state.liveQueued = true;
+    return;
+  }
+  const index = state.activeTargetIndex;
+  const file = state.targets[index];
+  const params = state.targetParams[index] || readParamsFromControls();
+  state.liveBusy = true;
+  dom.processBtn.disabled = true;
+  try {
+    const output = await processTarget(file, state.refStats, index, state.targets.length, params);
+    replaceOutput(index, output);
+    setStatus(`实时预览已更新：${file.name}`, 100);
+  } catch (error) {
+    console.error(error);
+    setStatus(`实时预览失败：${error.message}`, 0);
+  } finally {
+    state.liveBusy = false;
+    dom.processBtn.disabled = state.busy;
+    if (state.liveQueued) {
+      state.liveQueued = false;
+      scheduleLivePreviewUpdate();
+    }
+  }
+}
+
 function bindEvents() {
   dom.pickRefsBtn.addEventListener("click", () => dom.refsInput.click());
   dom.pickTargetsBtn.addEventListener("click", () => dom.targetsInput.click());
@@ -1282,6 +1374,8 @@ function bindEvents() {
   dom.refsInput.addEventListener("change", () => {
     state.references = Array.from(dom.refsInput.files || []);
     state.activeRefIndex = 0;
+    state.refStats = null;
+    clearTimeout(state.liveTimer);
     clearOutputs();
     refreshFileLists();
   });
@@ -1289,6 +1383,7 @@ function bindEvents() {
     state.targets = Array.from(dom.targetsInput.files || []).filter((file) => canBrowserDecode(file) || isRawFile(file));
     state.activeTargetIndex = 0;
     state.targetParams = state.targets.map(() => readParamsFromControls());
+    clearTimeout(state.liveTimer);
     clearOutputs();
     refreshFileLists();
   });
@@ -1296,13 +1391,16 @@ function bindEvents() {
     state.targets = Array.from(dom.folderInput.files || []).filter((file) => canBrowserDecode(file) || isRawFile(file));
     state.activeTargetIndex = 0;
     state.targetParams = state.targets.map(() => readParamsFromControls());
+    clearTimeout(state.liveTimer);
     clearOutputs();
     refreshFileLists();
   });
   dom.clearRefsBtn.addEventListener("click", () => {
     state.references = [];
+    state.refStats = null;
     state.activeRefIndex = 0;
     dom.refsInput.value = "";
+    clearTimeout(state.liveTimer);
     clearOutputs();
     refreshFileLists();
   });
@@ -1312,6 +1410,7 @@ function bindEvents() {
     state.targetParams = [];
     dom.targetsInput.value = "";
     dom.folderInput.value = "";
+    clearTimeout(state.liveTimer);
     clearOutputs();
     refreshFileLists();
   });
@@ -1328,36 +1427,71 @@ function bindEvents() {
     applyParamsToControls(deepClone(state.copiedParams));
     saveCurrentParams();
     setStatus("已粘贴到当前素材图。", null);
+    scheduleLivePreviewUpdate();
   });
   dom.syncParamsBtn.addEventListener("click", () => {
     const params = deepClone(readParamsFromControls());
     ensureTargetParams();
     state.targetParams = state.targets.map(() => deepClone(params));
     setStatus(`已同步参数到 ${state.targets.length} 张素材图。`, null);
+    scheduleLivePreviewUpdate();
   });
   dom.strengthRange.addEventListener("input", () => {
     dom.strengthValue.textContent = `${dom.strengthRange.value}%`;
-    saveCurrentParams();
+    scheduleLivePreviewUpdate();
   });
   dom.localRange.addEventListener("input", () => {
     dom.localValue.textContent = `${dom.localRange.value}%`;
-    saveCurrentParams();
+    scheduleLivePreviewUpdate();
   });
   dom.qualityRange.addEventListener("input", () => {
     dom.qualityValue.textContent = `${dom.qualityRange.value}%`;
+    scheduleLivePreviewUpdate();
   });
+  dom.sizeSelect.addEventListener("change", scheduleLivePreviewUpdate);
+  dom.formatSelect.addEventListener("change", scheduleLivePreviewUpdate);
   for (const control of [dom.modeSelect, dom.skinProtectInput]) {
-    control.addEventListener("change", saveCurrentParams);
+    control.addEventListener("change", scheduleLivePreviewUpdate);
   }
   for (const input of document.querySelectorAll(".adjust-slider")) {
     input.addEventListener("input", () => {
       updateAdjustmentLabels();
-      saveCurrentParams();
+      scheduleLivePreviewUpdate();
     });
   }
   for (const input of document.querySelectorAll(".hsl-slider")) {
-    input.addEventListener("input", saveCurrentParams);
+    input.addEventListener("input", scheduleLivePreviewUpdate);
   }
+  dom.compareStage.addEventListener("pointerdown", (event) => {
+    if (!state.activeOutput) return;
+    state.compareDragging = true;
+    dom.compareStage.setPointerCapture?.(event.pointerId);
+    updateCompareFromClientX(event.clientX);
+    event.preventDefault();
+  });
+  dom.compareStage.addEventListener("pointermove", (event) => {
+    if (!state.compareDragging) return;
+    updateCompareFromClientX(event.clientX);
+    event.preventDefault();
+  });
+  for (const eventName of ["pointerup", "pointercancel", "pointerleave"]) {
+    dom.compareStage.addEventListener(eventName, (event) => {
+      if (!state.compareDragging) return;
+      state.compareDragging = false;
+      if (dom.compareStage.hasPointerCapture?.(event.pointerId)) {
+        dom.compareStage.releasePointerCapture?.(event.pointerId);
+      }
+    });
+  }
+  dom.compareHandle.addEventListener("keydown", (event) => {
+    if (!state.activeOutput) return;
+    if (event.key === "ArrowLeft") setComparePosition(state.comparePosition - 2);
+    else if (event.key === "ArrowRight") setComparePosition(state.comparePosition + 2);
+    else if (event.key === "Home") setComparePosition(0);
+    else if (event.key === "End") setComparePosition(100);
+    else return;
+    event.preventDefault();
+  });
   dom.processBtn.addEventListener("click", processAll);
   dom.downloadBtn.addEventListener("click", () => {
     if (state.activeOutput) downloadUrl(state.activeOutput.url, state.activeOutput.name);

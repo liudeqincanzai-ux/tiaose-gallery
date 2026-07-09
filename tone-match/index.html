@@ -8,11 +8,56 @@
   </head>
   <body>
     <main class="app-shell">
-      <aside class="control-pane">
-        <div class="brand-block">
+      <header class="top-toolbar">
+        <div class="toolbar-brand">
           <p class="eyebrow">HTTPS Web Tool</p>
           <h1>Reference Tone Match</h1>
           <p class="subtitle">参考图仿色，支持批量 JPG / PNG / WebP。</p>
+        </div>
+
+        <div class="toolbar-field">
+          <label class="field-label" for="sizeSelect">输出尺寸</label>
+          <select id="sizeSelect">
+            <option value="0" selected>保持原尺寸</option>
+            <option value="3600">最长边 3600px</option>
+            <option value="2400">最长边 2400px</option>
+            <option value="1600">最长边 1600px</option>
+          </select>
+        </div>
+
+        <div class="toolbar-field">
+          <label class="field-label" for="formatSelect">输出格式</label>
+          <select id="formatSelect">
+            <option value="image/jpeg" selected>JPG</option>
+            <option value="image/png">PNG</option>
+            <option value="image/webp">WebP</option>
+          </select>
+          <label class="slider-label compact" for="qualityRange">
+            <span>JPG 质量</span>
+            <strong id="qualityValue">100%</strong>
+          </label>
+          <input id="qualityRange" type="range" min="72" max="100" value="100" />
+        </div>
+
+        <div class="toolbar-actions">
+          <button id="processBtn" class="process-button" type="button">开始仿色</button>
+          <button id="downloadBtn" class="download-button" type="button" disabled>下载当前结果</button>
+          <button id="downloadAllBtn" class="download-button subtle" type="button" disabled>下载全部结果</button>
+        </div>
+
+        <section class="status-panel toolbar-status" aria-live="polite">
+          <p id="statusLine">准备好了。</p>
+          <div class="meter">
+            <span id="progressBar"></span>
+          </div>
+        </section>
+      </header>
+
+      <aside class="control-pane">
+        <div class="brand-block">
+          <p class="eyebrow">Develop</p>
+          <h1>调色参数</h1>
+          <p class="subtitle">调整当前素材图，结果会自动刷新。</p>
         </div>
 
         <section class="panel settings-panel match-panel">
@@ -154,41 +199,6 @@
           </details>
         </section>
 
-        <section class="panel settings-panel output-panel">
-          <label class="field-label" for="sizeSelect">输出尺寸</label>
-          <select id="sizeSelect">
-            <option value="0" selected>保持原尺寸</option>
-            <option value="3600">最长边 3600px</option>
-            <option value="2400">最长边 2400px</option>
-            <option value="1600">最长边 1600px</option>
-          </select>
-
-          <label class="field-label" for="formatSelect">输出格式</label>
-          <select id="formatSelect">
-            <option value="image/jpeg" selected>JPG</option>
-            <option value="image/png">PNG</option>
-            <option value="image/webp">WebP</option>
-          </select>
-
-          <label class="slider-label" for="qualityRange">
-            <span>JPG 质量</span>
-            <strong id="qualityValue">100%</strong>
-          </label>
-          <input id="qualityRange" type="range" min="72" max="100" value="100" />
-        </section>
-
-        <section class="status-panel" aria-live="polite">
-          <p id="statusLine">准备好了。</p>
-          <div class="meter">
-            <span id="progressBar"></span>
-          </div>
-        </section>
-
-        <div class="action-stack">
-          <button id="processBtn" class="process-button" type="button">开始仿色</button>
-          <button id="downloadBtn" class="download-button" type="button" disabled>下载当前结果</button>
-          <button id="downloadAllBtn" class="download-button subtle" type="button" disabled>下载全部结果</button>
-        </div>
       </aside>
 
       <section class="workspace">
@@ -241,8 +251,12 @@
 
           <figure class="preview-frame result-frame">
             <figcaption>结果</figcaption>
-            <div class="preview-media">
-              <canvas id="resultCanvas"></canvas>
+            <div class="preview-media compare-stage" id="compareStage">
+              <canvas id="beforeCanvas" class="compare-canvas compare-before"></canvas>
+              <canvas id="resultCanvas" class="compare-canvas compare-after"></canvas>
+              <div class="compare-handle" id="compareHandle" role="slider" aria-label="原图和仿色结果对比" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+                <span></span>
+              </div>
               <div class="empty-state" id="resultEmpty">处理完成后显示</div>
             </div>
             <div class="thumb-strip" id="resultThumbs" aria-label="仿色结果缩略图"></div>
