@@ -62,11 +62,25 @@ button:disabled {
 
 .brand-block {
   grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
   gap: 18px;
   padding: 0 0 2px;
+}
+
+.brand-block .eyebrow {
+  grid-column: 1;
+}
+
+.brand-block h1 {
+  grid-column: 2;
+  text-align: center;
+}
+
+.brand-block .subtitle {
+  grid-column: 3;
+  text-align: right;
 }
 
 .eyebrow {
@@ -184,24 +198,40 @@ h2 {
   gap: 12px;
 }
 
-.file-panel,
-.match-panel,
-.output-panel,
-.parameter-panel {
-  grid-column: span 3;
+.adjustment-panel {
+  grid-column: 1 / 7;
+  grid-row: 2 / 4;
+  min-height: 260px;
 }
 
-.adjustment-panel,
+.match-panel {
+  grid-column: 7 / 10;
+  grid-row: 2;
+}
+
+.parameter-panel {
+  grid-column: 10 / 13;
+  grid-row: 2;
+}
+
 .hsl-panel {
-  grid-column: span 6;
+  grid-column: 7 / 13;
+  grid-row: 3;
+}
+
+.output-panel {
+  grid-column: 1 / 4;
+  grid-row: 4;
 }
 
 .status-panel {
-  grid-column: span 4;
+  grid-column: 4 / 8;
+  grid-row: 4;
 }
 
 .action-stack {
-  grid-column: span 8;
+  grid-column: 8 / 13;
+  grid-row: 4;
   align-self: end;
 }
 
@@ -334,11 +364,36 @@ input[type="range"] {
   background: var(--surface);
 }
 
+.preview-card-head,
 .preview-frame figcaption {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
-  color: var(--muted);
+  color: var(--ink);
   font-weight: 800;
+}
+
+.preview-card-head {
+  display: grid;
+  gap: 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 18px rgba(32, 36, 34, 0.06);
+  z-index: 1;
+}
+
+.preview-card-head .panel-title,
+.preview-card-head .file-list {
+  margin: 0;
+}
+
+.preview-frame figcaption {
+  color: var(--muted);
+}
+
+.preview-media {
+  position: relative;
+  min-height: 340px;
+  overflow: hidden;
+  background: #fdfdfb;
 }
 
 .preview-frame img,
@@ -356,7 +411,7 @@ input[type="range"] {
 
 .empty-state {
   position: absolute;
-  inset: 48px 0 0;
+  inset: 0;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -567,7 +622,10 @@ input[type="range"] {
     display: block;
   }
 
-  .file-panel,
+  .brand-block .subtitle {
+    text-align: left;
+  }
+
   .match-panel,
   .output-panel,
   .parameter-panel,
@@ -576,6 +634,7 @@ input[type="range"] {
   .status-panel,
   .action-stack {
     grid-column: auto;
+    grid-row: auto;
   }
 
   .action-stack {

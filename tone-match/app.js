@@ -77,6 +77,7 @@ const HSL_CENTERS = {
   purple: 272 / 360,
   magenta: 318 / 360,
 };
+const SAMPLE_APPEND_CHUNK = 12000;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -131,6 +132,15 @@ function defaultParams() {
     },
     hsl: defaultHsl(),
   };
+}
+
+function appendSamples(target, samples) {
+  for (let i = 0; i < samples.length; i += SAMPLE_APPEND_CHUNK) {
+    const end = Math.min(samples.length, i + SAMPLE_APPEND_CHUNK);
+    for (let j = i; j < end; j += 1) {
+      target.push(samples[j]);
+    }
+  }
 }
 
 function ensureTargetParams() {
@@ -1169,7 +1179,7 @@ async function analyzeReferences(files) {
   for (let i = 0; i < files.length; i += 1) {
     setStatus(`正在分析参考图 ${i + 1}/${files.length}：${files[i].name}`, (i / files.length) * 18);
     const loaded = await loadImageToImageData(files[i], MAX_REFERENCE_EDGE);
-    allSamples.push(...samplesFromImageData(loaded.imageData, MAX_ANALYZE_SAMPLES / Math.max(1, files.length)));
+    appendSamples(allSamples, samplesFromImageData(loaded.imageData, MAX_ANALYZE_SAMPLES / Math.max(1, files.length)));
     await nextFrame();
   }
   return buildStats(allSamples);

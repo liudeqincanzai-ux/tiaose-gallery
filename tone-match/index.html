@@ -15,30 +15,6 @@
           <p class="subtitle">参考图仿色，支持批量 JPG / PNG / WebP。</p>
         </div>
 
-        <section class="panel file-panel">
-          <div class="panel-title">
-            <span>参考图</span>
-            <button class="ghost-button" id="clearRefsBtn" type="button">清除</button>
-          </div>
-          <button class="primary-pick" id="pickRefsBtn" type="button">选择参考图</button>
-          <input id="refsInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" multiple hidden />
-          <p class="file-list" id="refsList">未选择</p>
-        </section>
-
-        <section class="panel file-panel">
-          <div class="panel-title">
-            <span>素材图</span>
-            <button class="ghost-button" id="clearTargetsBtn" type="button">清除</button>
-          </div>
-          <div class="button-row">
-            <button class="secondary-pick" id="pickTargetsBtn" type="button">选择图片</button>
-            <button class="secondary-pick" id="pickFolderBtn" type="button">选择文件夹</button>
-          </div>
-          <input id="targetsInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" multiple hidden />
-          <input id="folderInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" webkitdirectory directory multiple hidden />
-          <p class="file-list" id="targetsList">未选择</p>
-        </section>
-
         <section class="panel settings-panel match-panel">
           <label class="field-label" for="modeSelect">匹配模式</label>
           <select id="modeSelect">
@@ -225,25 +201,51 @@
         </div>
 
         <div class="preview-grid">
-          <figure class="preview-frame">
-            <figcaption>参考图</figcaption>
-            <img id="refPreview" alt="参考图预览" />
+          <figure class="preview-frame picker-frame">
+            <div class="preview-card-head">
+              <div class="panel-title">
+                <span>参考图</span>
+                <button class="ghost-button" id="clearRefsBtn" type="button">清除</button>
+              </div>
+              <button class="primary-pick" id="pickRefsBtn" type="button">选择参考图</button>
+              <input id="refsInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" multiple hidden />
+              <p class="file-list" id="refsList">未选择</p>
+            </div>
+            <div class="preview-media">
+              <img id="refPreview" alt="参考图预览" />
+              <div class="empty-state" id="refEmpty">选择参考图后显示</div>
+            </div>
             <div class="thumb-strip" id="refThumbs" aria-label="参考图缩略图"></div>
-            <div class="empty-state" id="refEmpty">选择参考图后显示</div>
           </figure>
 
-          <figure class="preview-frame">
-            <figcaption>素材图</figcaption>
-            <img id="targetPreview" alt="素材图预览" />
+          <figure class="preview-frame picker-frame">
+            <div class="preview-card-head">
+              <div class="panel-title">
+                <span>素材图</span>
+                <button class="ghost-button" id="clearTargetsBtn" type="button">清除</button>
+              </div>
+              <div class="button-row">
+                <button class="secondary-pick" id="pickTargetsBtn" type="button">选择图片</button>
+                <button class="secondary-pick" id="pickFolderBtn" type="button">选择文件夹</button>
+              </div>
+              <input id="targetsInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" multiple hidden />
+              <input id="folderInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" webkitdirectory directory multiple hidden />
+              <p class="file-list" id="targetsList">未选择</p>
+            </div>
+            <div class="preview-media">
+              <img id="targetPreview" alt="素材图预览" />
+              <div class="empty-state" id="targetEmpty">选择素材后显示</div>
+            </div>
             <div class="thumb-strip" id="targetThumbs" aria-label="素材图缩略图"></div>
-            <div class="empty-state" id="targetEmpty">选择素材后显示</div>
           </figure>
 
           <figure class="preview-frame result-frame">
             <figcaption>结果</figcaption>
-            <canvas id="resultCanvas"></canvas>
+            <div class="preview-media">
+              <canvas id="resultCanvas"></canvas>
+              <div class="empty-state" id="resultEmpty">处理完成后显示</div>
+            </div>
             <div class="thumb-strip" id="resultThumbs" aria-label="仿色结果缩略图"></div>
-            <div class="empty-state" id="resultEmpty">处理完成后显示</div>
           </figure>
         </div>
       </section>
