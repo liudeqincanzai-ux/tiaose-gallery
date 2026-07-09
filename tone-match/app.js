@@ -79,6 +79,7 @@ const MAX_ANALYZE_SAMPLES = 320000;
 const MAX_REFERENCE_EDGE = 1800;
 const CHUNK_PIXELS = 70000;
 const MAX_LIVE_PREVIEW_EDGE = 1600;
+const LUT_GRID_SIZE = 17;
 const RAW_EXTENSIONS = new Set(["arw", "orf", "rw2", "raf", "cr2", "cr3", "nef", "dng", "srw", "pef", "3fr", "rwl"]);
 const DECODE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "heic", "heif"]);
 const HSL_CHANNELS = ["red", "orange", "yellow", "green", "aqua", "blue", "purple", "magenta"];
@@ -328,10 +329,10 @@ function hsvToRgb(h, s, v) {
 }
 
 function modeParams(mode) {
-  if (mode === "deep") return { toneWeight: 0.58, colorWeight: 0.46, satWeight: 0.34, hueWeight: 0.22, maxToneDelta: 0.15, maxColorRatio: 1.14, baseLocalWeight: 0.24 };
-  if (mode === "strong") return { toneWeight: 0.50, colorWeight: 0.38, satWeight: 0.28, hueWeight: 0.18, maxToneDelta: 0.13, maxColorRatio: 1.12, baseLocalWeight: 0.20 };
-  if (mode === "soft") return { toneWeight: 0.32, colorWeight: 0.22, satWeight: 0.18, hueWeight: 0.10, maxToneDelta: 0.09, maxColorRatio: 1.08, baseLocalWeight: 0.12 };
-  return { toneWeight: 0.42, colorWeight: 0.30, satWeight: 0.22, hueWeight: 0.14, maxToneDelta: 0.11, maxColorRatio: 1.10, baseLocalWeight: 0.16 };
+  if (mode === "deep") return { toneWeight: 1.10, colorWeight: 0.96, satWeight: 0.88, hueWeight: 0.78, maxToneDelta: 0.34, maxColorRatio: 1.50 };
+  if (mode === "strong") return { toneWeight: 0.98, colorWeight: 0.86, satWeight: 0.76, hueWeight: 0.66, maxToneDelta: 0.30, maxColorRatio: 1.42 };
+  if (mode === "soft") return { toneWeight: 0.64, colorWeight: 0.58, satWeight: 0.50, hueWeight: 0.40, maxToneDelta: 0.20, maxColorRatio: 1.28 };
+  return { toneWeight: 0.86, colorWeight: 0.76, satWeight: 0.66, hueWeight: 0.56, maxToneDelta: 0.26, maxColorRatio: 1.36 };
 }
 
 function fitRgbToLuma(r, g, b, targetY) {
@@ -590,14 +591,25 @@ function buildStats(samples) {
   const shadowSats = [];
   const shadowValues = [];
   const highlightSats = [];
+  const hslBuckets = {};
+  for (const channel of HSL_CHANNELS) {
+    hslBuckets[channel] = { hues: [], sats: [], values: [] };
+  }
 
   for (const sample of samples) {
     ySorted.push(sample.y);
-    satSorted.push(sample.sat);
+    satSorted.push(sample.hsvSat);
     allR.push(sample.r);
     allG.push(sample.g);
     allB.push(sample.b);
     const hsv = { h: sample.hue, s: sample.hsvSat, v: sample.value };
+    for (const channel of HSL_CHANNELS) {
+      if (hslChannelWeight(channel, sample.hue, sample.hsvSat) >= 0.34) {
+        hslBuckets[channel].hues.push(sample.hue);
+        hslBuckets[channel].sats.push(sample.hsvSat);
+        hslBuckets[channel].values.push(sample.value);
+      }
+    }
     const skin = softSkinConfidence(sample.r, sample.g, sample.b, hsv, sample.y);
     if (skin >= 0.42) {
       skinHues.push(sample.hue);
@@ -687,7 +699,7 @@ function buildStats(samples) {
     for (const sample of samples) {
       if (sample.hsvSat < 0.045) continue;
       if (Math.floor(sample.hue * 12) % 12 === bin) {
-        sats.push(sample.sat);
+        sats.push(sample.hsvSat);
         vals.push(sample.value);
       }
     }
@@ -745,6 +757,16 @@ function buildStats(samples) {
   stats.shadowSatP70 = shadowSats.length >= 80 ? clamp(quantile(shadowSats, 0.70, fallbackSat), 0.015, 0.48) : clamp(fallbackSat * 0.70 + 0.035, 0.04, 0.32);
   stats.shadowValueP50 = shadowValues.length >= 80 ? clamp(quantile(shadowValues, 0.50, 0.20), 0.02, 0.55) : clamp(quantileSorted(ySorted, 0.18), 0.04, 0.34);
   stats.highlightSatP70 = highlightSats.length >= 80 ? clamp(quantile(highlightSats, 0.70, 0.10), 0.005, 0.38) : 0.10;
+  stats.hslProfiles = {};
+  for (const channel of HSL_CHANNELS) {
+    const bucket = hslBuckets[channel];
+    stats.hslProfiles[channel] = {
+      count: bucket.hues.length,
+      hue: bucket.hues.length >= 24 ? circularMean(bucket.hues, HSL_CENTERS[channel]) : HSL_CENTERS[channel],
+      sat: bucket.sats.length >= 24 ? clamp(median(bucket.sats, fallbackSat), 0.015, 0.98) : clamp(fallbackSat, 0.04, 0.70),
+      value: bucket.values.length >= 24 ? clamp(quantile(bucket.values, 0.58, fallbackValue), 0.02, 0.98) : clamp(fallbackValue, 0.08, 0.92),
+    };
+  }
   return stats;
 }
 
@@ -755,21 +777,20 @@ function analyzeImageData(imageData) {
 function createToneMapper(refStats, targetStats, settings, params) {
   const toneCurve = [];
   const strength = settings.strength;
-  const medianShift = clamp(refStats.lumaMedian - targetStats.lumaMedian, -0.10, 0.10) * strength * params.toneWeight * 0.42;
-  const contrastScale = clamp(Math.pow(refStats.contrast / Math.max(0.05, targetStats.contrast), 0.20), 0.88, 1.12);
+  const medianShift = clamp(refStats.lumaMedian - targetStats.lumaMedian, -0.18, 0.18) * params.toneWeight * 0.30;
+  const contrastScale = clamp(Math.pow(refStats.contrast / Math.max(0.05, targetStats.contrast), 0.55), 0.68, 1.46);
+  const localBoost = 0.84 + settings.localStrength * 0.36;
   for (let i = 0; i <= 256; i += 1) {
     const srcY = targetStats.quantiles[i];
     const q = i / 256;
     const refY = refStats.quantiles[i];
-    const sinTerm = Math.max(0, Math.sin(Math.PI * srcY));
-    const directMatch = srcY + (refY - srcY) * params.toneWeight * 0.16;
-    let filmY = 0.5 + (srcY - 0.5) * (1 + (contrastScale - 1) * params.toneWeight);
+    const midMask = Math.max(0, Math.sin(Math.PI * srcY));
+    const directMatch = srcY + (refY - srcY) * params.toneWeight * localBoost;
+    let filmY = 0.5 + (srcY - 0.5) * (1 + (contrastScale - 1) * params.toneWeight * 0.72);
     filmY += medianShift;
-    filmY += (1 - smoothstep(0.06, 0.34, srcY)) * 0.014 * strength * params.toneWeight;
-    filmY -= smoothstep(0.72, 0.98, srcY) * 0.024 * strength * params.toneWeight;
-    const qGuard = 0.55 + 0.45 * sinTerm;
-    const styleY = filmY * 0.78 + directMatch * 0.22;
-    const deltaLimit = params.maxToneDelta * qGuard * (0.55 + 0.45 * (1 - Math.abs(q - 0.5) * 2));
+    const styleY = mix(filmY, directMatch, 0.74);
+    const edgeGuard = 0.62 + 0.38 * midMask;
+    const deltaLimit = params.maxToneDelta * edgeGuard * (0.70 + 0.30 * (1 - Math.abs(q - 0.5) * 2));
     const protectedY = clamp(styleY, srcY - deltaLimit, srcY + deltaLimit);
     toneCurve.push(clamp01(srcY + (protectedY - srcY) * strength));
   }
@@ -915,12 +936,171 @@ function hueDistance(a, b) {
   return Math.min(d, 1 - d);
 }
 
+function circularDelta(fromHue, toHue) {
+  let delta = toHue - fromHue;
+  if (delta > 0.5) delta -= 1;
+  if (delta < -0.5) delta += 1;
+  return delta;
+}
+
 function hslChannelWeight(channel, hue, sat) {
   const center = HSL_CENTERS[channel];
   const distance = hueDistance(hue, center);
   const width = channel === "red" ? 28 / 360 : 34 / 360;
   const mask = 1 - smoothstep(width * 0.55, width, distance);
   return clamp(mask * smoothstep(0.025, 0.18, sat), 0, 1);
+}
+
+function hslProfileConfidence(refProfile, targetProfile) {
+  const refWeight = smoothstep(10, 90, refProfile?.count || 0);
+  const targetWeight = smoothstep(10, 90, targetProfile?.count || 0);
+  return clamp(0.25 + 0.75 * refWeight * targetWeight, 0, 1);
+}
+
+function transformLutColor(r, g, b, refStats, targetStats, toneCurve, settings, params) {
+  const srcY = luma(r, g, b);
+  const srcHsv = rgbToHsv(r, g, b);
+  const strength = settings.strength;
+  const toneY = interpCurve(targetStats.quantiles, toneCurve, srcY);
+  const highlightMask = smoothstep(0.74, 0.98, srcY);
+  const shadowMask = 1 - smoothstep(0.05, 0.34, srcY);
+  const colorMask = smoothstep(0.025, 0.16, srcHsv.s);
+  const skinConfidence = settings.skinProtect ? softSkinConfidence(r, g, b, srcHsv, srcY) : 0;
+  const redConfidence = redAccentConfidence(srcHsv, srcY) * (1 - skinConfidence * 0.72);
+
+  let [tr, tg, tb] = fitRgbToLuma(r, g, b, toneY);
+  const sourceRatio = interpRow(targetStats.balanceRows, srcY);
+  const referenceRatio = interpRow(refStats.balanceRows, toneY);
+  const balanceStrength = params.colorWeight * strength * (0.74 + settings.localStrength * 0.28) * (1 - skinConfidence * 0.20) * (1 - highlightMask * 0.16);
+  const correction = [
+    clamp(referenceRatio[0] / Math.max(0.0001, sourceRatio[0]), 1 / params.maxColorRatio, params.maxColorRatio),
+    clamp(referenceRatio[1] / Math.max(0.0001, sourceRatio[1]), 1 / params.maxColorRatio, params.maxColorRatio),
+    clamp(referenceRatio[2] / Math.max(0.0001, sourceRatio[2]), 1 / params.maxColorRatio, params.maxColorRatio),
+  ];
+  tr *= 1 + (correction[0] - 1) * balanceStrength;
+  tg *= 1 + (correction[1] - 1) * balanceStrength;
+  tb *= 1 + (correction[2] - 1) * balanceStrength;
+  [tr, tg, tb] = fitRgbToLuma(tr, tg, tb, toneY);
+
+  let hueDelta = 0;
+  let satLog = 0;
+  let valueShift = 0;
+  let totalWeight = 0;
+  for (const channel of HSL_CHANNELS) {
+    const weight = hslChannelWeight(channel, srcHsv.h, srcHsv.s);
+    if (weight <= 0.0001) continue;
+    const refProfile = refStats.hslProfiles?.[channel];
+    const targetProfile = targetStats.hslProfiles?.[channel];
+    if (!refProfile || !targetProfile) continue;
+    const confidence = hslProfileConfidence(refProfile, targetProfile);
+    const w = weight * confidence * colorMask;
+    if (w <= 0.0001) continue;
+    const hueMove = clamp(circularDelta(targetProfile.hue, refProfile.hue), -38 / 360, 38 / 360);
+    const satRatio = clamp(refProfile.sat / Math.max(0.015, targetProfile.sat), 0.48, 1.95);
+    const valDelta = clamp(refProfile.value - targetProfile.value, -0.22, 0.22);
+    hueDelta += hueMove * w;
+    satLog += Math.log(satRatio) * w;
+    valueShift += valDelta * w;
+    totalWeight += w;
+  }
+
+  if (skinConfidence > 0.001 && refStats.skinSampleCount >= 80 && targetStats.skinSampleCount >= 80) {
+    const w = skinConfidence * (settings.skinProtect ? 0.46 : 0.68);
+    hueDelta += clamp(circularDelta(targetStats.skinHue, refStats.skinHue), -16 / 360, 16 / 360) * w;
+    satLog += Math.log(clamp(refStats.skinSat / Math.max(0.04, targetStats.skinSat), 0.72, 1.28)) * w;
+    valueShift += clamp(refStats.lumaMedian - targetStats.lumaMedian, -0.08, 0.08) * w * 0.32;
+    totalWeight += w;
+  }
+
+  const chromaStrength = strength * (0.82 + settings.localStrength * 0.30) * (1 - highlightMask * 0.18) * (1 - shadowMask * 0.06);
+  let outHsv = rgbToHsv(tr, tg, tb);
+  if (totalWeight > 0.0001) {
+    const avgHueDelta = hueDelta / totalWeight;
+    const avgSatLog = satLog / totalWeight;
+    const avgValueShift = valueShift / totalWeight;
+    outHsv.h += avgHueDelta * params.hueWeight * chromaStrength;
+    outHsv.s = clamp01(outHsv.s * Math.exp(avgSatLog * params.satWeight * chromaStrength));
+    outHsv.v = clamp01(outHsv.v + avgValueShift * params.toneWeight * chromaStrength * 0.62);
+  }
+
+  if (redConfidence > 0.001 && refStats.redSampleCount >= 40) {
+    const redW = redConfidence * strength * (0.70 + settings.localStrength * 0.18);
+    const redSatTarget = clamp(refStats.redSatP70, srcHsv.s * 0.68, srcHsv.s * 1.42);
+    const redValueTarget = clamp(refStats.redValueP65, srcHsv.v - 0.10, srcHsv.v + 0.10);
+    outHsv.h += circularDelta(outHsv.h, refStats.redHue) * redW * 0.26;
+    outHsv.s = mix(outHsv.s, redSatTarget, redW * 0.72);
+    outHsv.v = mix(outHsv.v, redValueTarget, redW * 0.48);
+  }
+
+  [tr, tg, tb] = hsvToRgb(outHsv.h, outHsv.s, outHsv.v);
+  const finalY = clamp01(toneY + (totalWeight > 0.0001 ? (valueShift / totalWeight) * params.toneWeight * strength * 0.30 : 0));
+  [tr, tg, tb] = fitRgbToLuma(tr, tg, tb, finalY);
+
+  if (srcY < 0.015 || srcY > 0.985 || srcHsv.s < 0.012) {
+    const neutralBlend = srcY < 0.015 || srcY > 0.985 ? 0.55 : 0.32;
+    const neutral = fitRgbToLuma(r, g, b, toneY);
+    tr = mix(tr, neutral[0], neutralBlend);
+    tg = mix(tg, neutral[1], neutralBlend);
+    tb = mix(tb, neutral[2], neutralBlend);
+  }
+
+  return [clamp01(tr), clamp01(tg), clamp01(tb)];
+}
+
+function createStyleLut(refStats, targetStats, settings, params, toneCurve) {
+  const size = LUT_GRID_SIZE;
+  const data = new Float32Array(size * size * size * 3);
+  for (let bz = 0; bz < size; bz += 1) {
+    const b = bz / (size - 1);
+    for (let gy = 0; gy < size; gy += 1) {
+      const g = gy / (size - 1);
+      for (let rx = 0; rx < size; rx += 1) {
+        const r = rx / (size - 1);
+        const mapped = transformLutColor(r, g, b, refStats, targetStats, toneCurve, settings, params);
+        const index = ((bz * size + gy) * size + rx) * 3;
+        data[index] = mapped[0];
+        data[index + 1] = mapped[1];
+        data[index + 2] = mapped[2];
+      }
+    }
+  }
+  return { size, data };
+}
+
+function sampleStyleLut(lut, r, g, b) {
+  const size = lut.size;
+  const max = size - 1;
+  const fr = clamp01(r) * max;
+  const fg = clamp01(g) * max;
+  const fb = clamp01(b) * max;
+  const r0 = Math.floor(fr);
+  const g0 = Math.floor(fg);
+  const b0 = Math.floor(fb);
+  const r1 = Math.min(max, r0 + 1);
+  const g1 = Math.min(max, g0 + 1);
+  const b1 = Math.min(max, b0 + 1);
+  const tr = fr - r0;
+  const tg = fg - g0;
+  const tb = fb - b0;
+
+  const read = (ri, gi, bi, ch) => lut.data[((bi * size + gi) * size + ri) * 3 + ch];
+  const out = [0, 0, 0];
+  for (let ch = 0; ch < 3; ch += 1) {
+    const c000 = read(r0, g0, b0, ch);
+    const c100 = read(r1, g0, b0, ch);
+    const c010 = read(r0, g1, b0, ch);
+    const c110 = read(r1, g1, b0, ch);
+    const c001 = read(r0, g0, b1, ch);
+    const c101 = read(r1, g0, b1, ch);
+    const c011 = read(r0, g1, b1, ch);
+    const c111 = read(r1, g1, b1, ch);
+    const c00 = mix(c000, c100, tr);
+    const c10 = mix(c010, c110, tr);
+    const c01 = mix(c001, c101, tr);
+    const c11 = mix(c011, c111, tr);
+    out[ch] = mix(mix(c00, c10, tg), mix(c01, c11, tg), tb);
+  }
+  return out;
 }
 
 function applyHslAdjustments(r, g, b, hslAdjustments) {
@@ -1435,8 +1615,7 @@ async function processTarget(file, refStats, index, total, imageParams) {
   const loaded = await loadImageToImageData(file, maxEdge);
   const targetStats = analyzeImageData(loaded.imageData);
   const toneCurve = createToneMapper(refStats, targetStats, settings, params);
-  const localWeight = params.baseLocalWeight * settings.localStrength;
-  const localMap = localWeight > 0.001 ? buildLocalMap(loaded.imageData) : null;
+  const styleLut = createStyleLut(refStats, targetStats, settings, params, toneCurve);
   const baseCanvas = document.createElement("canvas");
   baseCanvas.width = loaded.width;
   baseCanvas.height = loaded.height;
@@ -1450,21 +1629,17 @@ async function processTarget(file, refStats, index, total, imageParams) {
   const pixelCount = loaded.width * loaded.height;
   for (let p = 0; p < pixelCount; p += 1) {
     const i = p * 4;
-    const x = p % loaded.width;
-    const y = Math.floor(p / loaded.width);
     const r = srgbByteToLinear(loaded.imageData.data[i]);
     const g = srgbByteToLinear(loaded.imageData.data[i + 1]);
     const b = srgbByteToLinear(loaded.imageData.data[i + 2]);
-    const a = loaded.imageData.data[i + 3] / 255;
-    const localY = localMap ? sampleLocalMap(localMap, x, y) : 0.5;
-    const px = matchPixel(r, g, b, a, refStats, targetStats, toneCurve, settings, params, localY, localWeight);
+    const px = sampleStyleLut(styleLut, r, g, b);
     out.data[i] = linearUnitToSrgbByte(px[0]);
     out.data[i + 1] = linearUnitToSrgbByte(px[1]);
     out.data[i + 2] = linearUnitToSrgbByte(px[2]);
-    out.data[i + 3] = Math.round(px[3] * 255);
+    out.data[i + 3] = loaded.imageData.data[i + 3];
     if (p % CHUNK_PIXELS === 0) {
       const localProgress = p / pixelCount;
-      setStatus(`正在生成仿色底片 ${index + 1}/${total}：${file.name}`, 28 + ((index + localProgress) / total) * 50);
+      setStatus(`正在套用颜色 LUT ${index + 1}/${total}：${file.name}`, 28 + ((index + localProgress) / total) * 50);
       await nextFrame();
     }
   }
