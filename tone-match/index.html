@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reference Tone Match Web</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="control-pane">
+        <div class="brand-block">
+          <p class="eyebrow">HTTPS Web Tool</p>
+          <h1>Reference Tone Match</h1>
+          <p class="subtitle">参考图仿色，支持批量 JPG / PNG / WebP。</p>
+        </div>
+
+        <section class="panel file-panel">
+          <div class="panel-title">
+            <span>参考图</span>
+            <button class="ghost-button" id="clearRefsBtn" type="button">清除</button>
+          </div>
+          <button class="primary-pick" id="pickRefsBtn" type="button">选择参考图</button>
+          <input id="refsInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" multiple hidden />
+          <p class="file-list" id="refsList">未选择</p>
+        </section>
+
+        <section class="panel file-panel">
+          <div class="panel-title">
+            <span>素材图</span>
+            <button class="ghost-button" id="clearTargetsBtn" type="button">清除</button>
+          </div>
+          <div class="button-row">
+            <button class="secondary-pick" id="pickTargetsBtn" type="button">选择图片</button>
+            <button class="secondary-pick" id="pickFolderBtn" type="button">选择文件夹</button>
+          </div>
+          <input id="targetsInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" multiple hidden />
+          <input id="folderInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.heic,.heif,.arw,.orf,.rw2,.raf,.cr2,.cr3,.nef,.dng" webkitdirectory directory multiple hidden />
+          <p class="file-list" id="targetsList">未选择</p>
+        </section>
+
+        <section class="panel settings-panel match-panel">
+          <label class="field-label" for="modeSelect">匹配模式</label>
+          <select id="modeSelect">
+            <option value="normal" selected>标准</option>
+            <option value="soft">柔和</option>
+            <option value="strong">增强</option>
+            <option value="deep">浓郁</option>
+          </select>
+
+          <label class="slider-label" for="strengthRange">
+            <span>仿色强度</span>
+            <strong id="strengthValue">100%</strong>
+          </label>
+          <input id="strengthRange" type="range" min="0" max="100" value="100" />
+
+          <label class="slider-label" for="localRange">
+            <span>局部调整</span>
+            <strong id="localValue">45%</strong>
+          </label>
+          <input id="localRange" type="range" min="0" max="100" value="45" />
+
+          <label class="check-row">
+            <input id="skinProtectInput" type="checkbox" checked />
+            <span>肤色保护</span>
+          </label>
+        </section>
+
+        <section class="panel parameter-panel">
+          <div class="panel-title">
+            <span>图片参数</span>
+          </div>
+          <div class="button-row three-buttons">
+            <button class="secondary-pick" id="copyParamsBtn" type="button">复制参数</button>
+            <button class="secondary-pick" id="pasteParamsBtn" type="button">粘贴参数</button>
+            <button class="secondary-pick" id="syncParamsBtn" type="button">同步全部</button>
+          </div>
+          <p class="file-list">参数会跟随当前选中的素材图。选择多张素材时，可一键同步到全部图片。</p>
+        </section>
+
+        <section class="panel adjustment-panel">
+          <div class="panel-title">
+            <span>基础调整</span>
+          </div>
+          <div class="adjust-grid">
+            <label class="mini-slider">
+              <span>色温 <strong data-value-for="temperature">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="temperature" />
+            </label>
+            <label class="mini-slider">
+              <span>色调 <strong data-value-for="tint">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="tint" />
+            </label>
+            <label class="mini-slider">
+              <span>曝光度 <strong data-value-for="exposure">0.00</strong></span>
+              <input class="adjust-slider" type="range" min="-200" max="200" value="0" step="5" data-param="exposure" />
+            </label>
+            <label class="mini-slider">
+              <span>对比度 <strong data-value-for="contrast">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="contrast" />
+            </label>
+            <label class="mini-slider">
+              <span>高光 <strong data-value-for="highlights">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="highlights" />
+            </label>
+            <label class="mini-slider">
+              <span>阴影 <strong data-value-for="shadows">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="shadows" />
+            </label>
+            <label class="mini-slider">
+              <span>白色色阶 <strong data-value-for="whites">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="whites" />
+            </label>
+            <label class="mini-slider">
+              <span>黑色色阶 <strong data-value-for="blacks">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="blacks" />
+            </label>
+            <label class="mini-slider">
+              <span>鲜艳度 <strong data-value-for="vibrance">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="vibrance" />
+            </label>
+            <label class="mini-slider">
+              <span>饱和度 <strong data-value-for="saturation">0</strong></span>
+              <input class="adjust-slider" type="range" min="-100" max="100" value="0" data-param="saturation" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel hsl-panel">
+          <details open>
+            <summary>HSL 调整</summary>
+            <div class="hsl-grid" id="hslGrid">
+              <div class="hsl-head">颜色</div>
+              <div class="hsl-head">色相</div>
+              <div class="hsl-head">饱和度</div>
+              <div class="hsl-head">明度</div>
+
+              <div class="hsl-name"><span class="swatch red"></span>红色</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="red" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="red" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="red" data-axis="l" />
+
+              <div class="hsl-name"><span class="swatch orange"></span>橙色</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="orange" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="orange" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="orange" data-axis="l" />
+
+              <div class="hsl-name"><span class="swatch yellow"></span>黄色</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="yellow" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="yellow" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="yellow" data-axis="l" />
+
+              <div class="hsl-name"><span class="swatch green"></span>绿色</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="green" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="green" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="green" data-axis="l" />
+
+              <div class="hsl-name"><span class="swatch aqua"></span>浅绿色</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="aqua" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="aqua" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="aqua" data-axis="l" />
+
+              <div class="hsl-name"><span class="swatch blue"></span>蓝色</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="blue" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="blue" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="blue" data-axis="l" />
+
+              <div class="hsl-name"><span class="swatch purple"></span>紫色</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="purple" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="purple" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="purple" data-axis="l" />
+
+              <div class="hsl-name"><span class="swatch magenta"></span>洋红</div>
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="magenta" data-axis="h" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="magenta" data-axis="s" />
+              <input class="hsl-slider" type="range" min="-100" max="100" value="0" data-channel="magenta" data-axis="l" />
+            </div>
+          </details>
+        </section>
+
+        <section class="panel settings-panel output-panel">
+          <label class="field-label" for="sizeSelect">输出尺寸</label>
+          <select id="sizeSelect">
+            <option value="0" selected>保持原尺寸</option>
+            <option value="3600">最长边 3600px</option>
+            <option value="2400">最长边 2400px</option>
+            <option value="1600">最长边 1600px</option>
+          </select>
+
+          <label class="field-label" for="formatSelect">输出格式</label>
+          <select id="formatSelect">
+            <option value="image/jpeg" selected>JPG</option>
+            <option value="image/png">PNG</option>
+            <option value="image/webp">WebP</option>
+          </select>
+
+          <label class="slider-label" for="qualityRange">
+            <span>JPG 质量</span>
+            <strong id="qualityValue">100%</strong>
+          </label>
+          <input id="qualityRange" type="range" min="72" max="100" value="100" />
+        </section>
+
+        <section class="status-panel" aria-live="polite">
+          <p id="statusLine">准备好了。</p>
+          <div class="meter">
+            <span id="progressBar"></span>
+          </div>
+        </section>
+
+        <div class="action-stack">
+          <button id="processBtn" class="process-button" type="button">开始仿色</button>
+          <button id="downloadBtn" class="download-button" type="button" disabled>下载当前结果</button>
+          <button id="downloadAllBtn" class="download-button subtle" type="button" disabled>下载全部结果</button>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <div class="workspace-head">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h2>仿色预览</h2>
+          </div>
+          <p class="support-note">浏览器直接处理图片；RAW 需要先转 JPG / PNG，或后续接本地服务。</p>
+        </div>
+
+        <div class="preview-grid">
+          <figure class="preview-frame">
+            <figcaption>参考图</figcaption>
+            <img id="refPreview" alt="参考图预览" />
+            <div class="thumb-strip" id="refThumbs" aria-label="参考图缩略图"></div>
+            <div class="empty-state" id="refEmpty">选择参考图后显示</div>
+          </figure>
+
+          <figure class="preview-frame">
+            <figcaption>素材图</figcaption>
+            <img id="targetPreview" alt="素材图预览" />
+            <div class="thumb-strip" id="targetThumbs" aria-label="素材图缩略图"></div>
+            <div class="empty-state" id="targetEmpty">选择素材后显示</div>
+          </figure>
+
+          <figure class="preview-frame result-frame">
+            <figcaption>结果</figcaption>
+            <canvas id="resultCanvas"></canvas>
+            <div class="thumb-strip" id="resultThumbs" aria-label="仿色结果缩略图"></div>
+            <div class="empty-state" id="resultEmpty">处理完成后显示</div>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
