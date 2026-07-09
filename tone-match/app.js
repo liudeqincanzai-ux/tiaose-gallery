@@ -57,6 +57,10 @@ const state = {
   liveTimer: null,
   liveBusy: false,
   liveQueued: false,
+  previewTimer: null,
+  previewBusy: false,
+  previewQueued: false,
+  previewRevision: 0,
   compareDragging: false,
   comparePosition: 50,
   previewUrls: {
@@ -73,6 +77,7 @@ const state = {
 const MAX_ANALYZE_SAMPLES = 320000;
 const MAX_REFERENCE_EDGE = 1800;
 const CHUNK_PIXELS = 70000;
+const MAX_LIVE_PREVIEW_EDGE = 1600;
 const RAW_EXTENSIONS = new Set(["arw", "orf", "rw2", "raf", "cr2", "cr3", "nef", "dng", "srw", "pef", "3fr", "rwl"]);
 const DECODE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "heic", "heif"]);
 const HSL_CHANNELS = ["red", "orange", "yellow", "green", "aqua", "blue", "purple", "magenta"];
@@ -1144,6 +1149,9 @@ function refreshFileLists() {
 }
 
 function clearOutputs() {
+  clearTimeout(state.liveTimer);
+  clearTimeout(state.previewTimer);
+  state.previewRevision += 1;
   for (const output of state.outputs) URL.revokeObjectURL(output.url);
   state.outputs = [];
   state.activeOutput = null;
@@ -1172,6 +1180,47 @@ function canvasToBlob(canvas, format, quality) {
   });
 }
 
+function canvasToImageData(canvas) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+function scaleCanvasToSize(sourceCanvas, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(sourceCanvas, 0, 0, width, height);
+  return canvas;
+}
+
+function scaleCanvasToMaxEdge(sourceCanvas, maxEdge) {
+  const sourceEdge = Math.max(sourceCanvas.width, sourceCanvas.height);
+  const scale = maxEdge > 0 ? Math.min(1, maxEdge / Math.max(1, sourceEdge)) : 1;
+  const width = Math.max(1, Math.round(sourceCanvas.width * scale));
+  const height = Math.max(1, Math.round(sourceCanvas.height * scale));
+  return scaleCanvasToSize(sourceCanvas, width, height);
+}
+
+function coreParamsFromSettings(settings) {
+  return {
+    mode: settings.mode,
+    strength: settings.strength,
+    localStrength: settings.localStrength,
+    skinProtect: settings.skinProtect,
+  };
+}
+
+function coreParamsEqual(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.mode === b.mode &&
+    Math.abs(a.strength - b.strength) < 0.0001 &&
+    Math.abs(a.localStrength - b.localStrength) < 0.0001 &&
+    Boolean(a.skinProtect) === Boolean(b.skinProtect)
+  );
+}
+
 function downloadUrl(url, name) {
   const a = document.createElement("a");
   a.href = url;
@@ -1188,7 +1237,7 @@ function selectOutput(index, syncTarget = true) {
   state.activeOutput = output;
   state.activeOutputIndex = index;
 
-  const sourceCanvas = output.sourceCanvas || output.canvas;
+  const sourceCanvas = output.sourcePreviewCanvas || output.sourceCanvas || output.canvas;
   const beforeCtx = dom.beforeCanvas.getContext("2d");
   dom.beforeCanvas.width = sourceCanvas.width;
   dom.beforeCanvas.height = sourceCanvas.height;
@@ -1220,6 +1269,39 @@ function replaceOutput(index, output) {
   dom.downloadAllBtn.disabled = state.outputs.length === 0;
 }
 
+async function renderManualAdjustmentsToCanvas(baseImageData, settings, targetCanvas = null, statusText = null, progressStart = null, progressEnd = null) {
+  const canvas = targetCanvas || document.createElement("canvas");
+  canvas.width = baseImageData.width;
+  canvas.height = baseImageData.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("当前浏览器无法创建图片处理画布。");
+
+  const out = ctx.createImageData(baseImageData.width, baseImageData.height);
+  out.data.set(baseImageData.data);
+  const pixelCount = baseImageData.width * baseImageData.height;
+  for (let p = 0; p < pixelCount; p += 1) {
+    const i = p * 4;
+    const adjusted = applyManualAdjustments(
+      baseImageData.data[i] / 255,
+      baseImageData.data[i + 1] / 255,
+      baseImageData.data[i + 2] / 255,
+      settings
+    );
+    out.data[i] = Math.round(adjusted[0] * 255);
+    out.data[i + 1] = Math.round(adjusted[1] * 255);
+    out.data[i + 2] = Math.round(adjusted[2] * 255);
+    if (p % CHUNK_PIXELS === 0) {
+      if (statusText && progressStart !== null && progressEnd !== null) {
+        const t = p / pixelCount;
+        setStatus(statusText, mix(progressStart, progressEnd, t));
+      }
+      await nextFrame();
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+  return canvas;
+}
+
 async function analyzeReferences(files) {
   const allSamples = [];
   for (let i = 0; i < files.length; i += 1) {
@@ -1233,8 +1315,6 @@ async function analyzeReferences(files) {
 
 async function processTarget(file, refStats, index, total, imageParams) {
   const maxEdge = Number(dom.sizeSelect.value);
-  const format = dom.formatSelect.value;
-  const quality = Number(dom.qualityRange.value) / 100;
   const settings = imageParams || readParamsFromControls();
   const params = modeParams(settings.mode);
 
@@ -1244,10 +1324,10 @@ async function processTarget(file, refStats, index, total, imageParams) {
   const toneCurve = createToneMapper(refStats, targetStats, settings, params);
   const localWeight = params.baseLocalWeight * settings.localStrength;
   const localMap = localWeight > 0.001 ? buildLocalMap(loaded.imageData) : null;
-  const canvas = document.createElement("canvas");
-  canvas.width = loaded.width;
-  canvas.height = loaded.height;
-  const ctx = canvas.getContext("2d");
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.width = loaded.width;
+  baseCanvas.height = loaded.height;
+  const ctx = baseCanvas.getContext("2d");
   if (!ctx) {
     throw new Error("当前浏览器无法创建图片处理画布。");
   }
@@ -1265,23 +1345,45 @@ async function processTarget(file, refStats, index, total, imageParams) {
     const a = loaded.imageData.data[i + 3] / 255;
     const localY = localMap ? sampleLocalMap(localMap, x, y) : 0.5;
     const px = matchPixel(r, g, b, a, refStats, targetStats, toneCurve, settings, params, localY, localWeight);
-    const adjusted = applyManualAdjustments(px[0], px[1], px[2], settings);
-    out.data[i] = Math.round(adjusted[0] * 255);
-    out.data[i + 1] = Math.round(adjusted[1] * 255);
-    out.data[i + 2] = Math.round(adjusted[2] * 255);
+    out.data[i] = Math.round(px[0] * 255);
+    out.data[i + 1] = Math.round(px[1] * 255);
+    out.data[i + 2] = Math.round(px[2] * 255);
     out.data[i + 3] = Math.round(px[3] * 255);
     if (p % CHUNK_PIXELS === 0) {
       const localProgress = p / pixelCount;
-      setStatus(`正在仿色 ${index + 1}/${total}：${file.name}`, 28 + ((index + localProgress) / total) * 58);
+      setStatus(`正在生成仿色底片 ${index + 1}/${total}：${file.name}`, 28 + ((index + localProgress) / total) * 50);
       await nextFrame();
     }
   }
 
   ctx.putImageData(out, 0, 0);
-  const blob = await canvasToBlob(canvas, format, quality);
-  const name = outputName(file.name, format);
-  const url = URL.createObjectURL(blob);
-  return { canvas, sourceCanvas: loaded.canvas, blob, url, name, params: deepClone(settings) };
+  const previewBaseCanvas = scaleCanvasToMaxEdge(baseCanvas, MAX_LIVE_PREVIEW_EDGE);
+  const previewBaseImageData = canvasToImageData(previewBaseCanvas);
+  const previewCanvas = await renderManualAdjustmentsToCanvas(
+    previewBaseImageData,
+    settings,
+    null,
+    `正在生成快速预览 ${index + 1}/${total}：${file.name}`,
+    78 + (index / total) * 10,
+    82 + (index / total) * 10
+  );
+  const sourcePreviewCanvas = scaleCanvasToSize(loaded.canvas, previewCanvas.width, previewCanvas.height);
+  const thumbBlob = await canvasToBlob(previewCanvas, "image/jpeg", 0.86);
+  const name = outputName(file.name, dom.formatSelect.value);
+  const url = URL.createObjectURL(thumbBlob);
+  return {
+    canvas: previewCanvas,
+    baseCanvas,
+    previewBaseImageData,
+    sourceCanvas: loaded.canvas,
+    sourcePreviewCanvas,
+    blob: thumbBlob,
+    url,
+    name,
+    params: deepClone(settings),
+    coreParams: coreParamsFromSettings(settings),
+    maxEdge,
+  };
 }
 
 async function processAll() {
@@ -1332,11 +1434,13 @@ function canLiveUpdate() {
 
 function scheduleLivePreviewUpdate() {
   saveCurrentParams();
+  clearTimeout(state.previewTimer);
+  state.previewRevision += 1;
   if (!canLiveUpdate()) return;
   clearTimeout(state.liveTimer);
   state.liveTimer = setTimeout(() => {
     refreshActiveOutput();
-  }, 260);
+  }, 420);
 }
 
 async function refreshActiveOutput() {
@@ -1345,6 +1449,8 @@ async function refreshActiveOutput() {
     state.liveQueued = true;
     return;
   }
+  clearTimeout(state.previewTimer);
+  state.previewRevision += 1;
   const index = state.activeTargetIndex;
   const file = state.targets[index];
   const params = state.targetParams[index] || readParamsFromControls();
@@ -1364,6 +1470,110 @@ async function refreshActiveOutput() {
       state.liveQueued = false;
       scheduleLivePreviewUpdate();
     }
+  }
+}
+
+function canFastPreviewUpdate() {
+  const output = state.outputs[state.activeTargetIndex];
+  return Boolean(output?.previewBaseImageData && !state.busy && !state.liveBusy);
+}
+
+function scheduleFastPreviewUpdate() {
+  saveCurrentParams();
+  if (!canFastPreviewUpdate()) return;
+  clearTimeout(state.previewTimer);
+  state.previewTimer = setTimeout(() => {
+    refreshManualPreview();
+  }, 40);
+}
+
+function scheduleSmartPreviewUpdate() {
+  saveCurrentParams();
+  const output = state.outputs[state.activeTargetIndex];
+  if (!output) return;
+  const params = state.targetParams[state.activeTargetIndex] || readParamsFromControls();
+  if (!coreParamsEqual(output.coreParams, coreParamsFromSettings(params)) || output.maxEdge !== Number(dom.sizeSelect.value)) {
+    scheduleLivePreviewUpdate();
+  } else {
+    scheduleFastPreviewUpdate();
+  }
+}
+
+async function refreshManualPreview() {
+  if (!canFastPreviewUpdate()) return;
+  if (state.previewBusy) {
+    state.previewQueued = true;
+    return;
+  }
+
+  const revision = state.previewRevision + 1;
+  state.previewRevision = revision;
+  const index = state.activeTargetIndex;
+  const output = state.outputs[index];
+  const params = state.targetParams[index] || readParamsFromControls();
+  state.previewBusy = true;
+  try {
+    const canvas = await renderManualAdjustmentsToCanvas(output.previewBaseImageData, params);
+    if (revision !== state.previewRevision || index !== state.activeTargetIndex || state.outputs[index] !== output) return;
+    output.canvas = canvas;
+    output.params = deepClone(params);
+    selectOutput(index, false);
+    setStatus(`实时预览已更新：${state.targets[index]?.name || output.name}`, 100);
+  } catch (error) {
+    console.error(error);
+    setStatus(`实时预览失败：${error.message}`, 0);
+  } finally {
+    state.previewBusy = false;
+    if (state.previewQueued) {
+      state.previewQueued = false;
+      scheduleFastPreviewUpdate();
+    }
+  }
+}
+
+async function ensureOutputCoreCurrent(index) {
+  let output = state.outputs[index];
+  const file = state.targets[index];
+  if (!output || !file || !state.refStats) return output;
+  const params = state.targetParams[index] || output.params || defaultParams();
+  const nextCoreParams = coreParamsFromSettings(params);
+  if (coreParamsEqual(output.coreParams, nextCoreParams) && output.maxEdge === Number(dom.sizeSelect.value)) return output;
+  const freshOutput = await processTarget(file, state.refStats, index, state.targets.length, params);
+  replaceOutput(index, freshOutput);
+  output = freshOutput;
+  return output;
+}
+
+async function exportOutput(index) {
+  const output = await ensureOutputCoreCurrent(index);
+  if (!output) return;
+  const format = dom.formatSelect.value;
+  const quality = Number(dom.qualityRange.value) / 100;
+  const params = state.targetParams[index] || output.params || defaultParams();
+  const sourceName = state.targets[index]?.name || output.name;
+  setStatus(`正在导出：${sourceName}`, 8);
+  const baseImageData = output.baseCanvas ? canvasToImageData(output.baseCanvas) : canvasToImageData(output.canvas);
+  const exportCanvas = await renderManualAdjustmentsToCanvas(baseImageData, params, null, `正在套用最终参数：${sourceName}`, 15, 88);
+  const blob = await canvasToBlob(exportCanvas, format, quality);
+  const url = URL.createObjectURL(blob);
+  downloadUrl(url, outputName(sourceName, format));
+  setTimeout(() => URL.revokeObjectURL(url), 1200);
+  setStatus(`已导出：${sourceName}`, 100);
+}
+
+async function exportAllOutputs() {
+  if (!state.outputs.length) return;
+  dom.downloadBtn.disabled = true;
+  dom.downloadAllBtn.disabled = true;
+  try {
+    for (let i = 0; i < state.outputs.length; i += 1) {
+      await exportOutput(i);
+      await nextFrame();
+    }
+    setStatus(`已导出全部：${state.outputs.length} 张。`, 100);
+  } finally {
+    dom.downloadBtn.disabled = !state.activeOutput;
+    dom.downloadAllBtn.disabled = state.outputs.length === 0;
   }
 }
 
@@ -1427,14 +1637,14 @@ function bindEvents() {
     applyParamsToControls(deepClone(state.copiedParams));
     saveCurrentParams();
     setStatus("已粘贴到当前素材图。", null);
-    scheduleLivePreviewUpdate();
+    scheduleSmartPreviewUpdate();
   });
   dom.syncParamsBtn.addEventListener("click", () => {
     const params = deepClone(readParamsFromControls());
     ensureTargetParams();
     state.targetParams = state.targets.map(() => deepClone(params));
     setStatus(`已同步参数到 ${state.targets.length} 张素材图。`, null);
-    scheduleLivePreviewUpdate();
+    scheduleSmartPreviewUpdate();
   });
   dom.strengthRange.addEventListener("input", () => {
     dom.strengthValue.textContent = `${dom.strengthRange.value}%`;
@@ -1446,21 +1656,23 @@ function bindEvents() {
   });
   dom.qualityRange.addEventListener("input", () => {
     dom.qualityValue.textContent = `${dom.qualityRange.value}%`;
-    scheduleLivePreviewUpdate();
+    setStatus("导出质量已更新，预览不需要重新渲染。", null);
   });
   dom.sizeSelect.addEventListener("change", scheduleLivePreviewUpdate);
-  dom.formatSelect.addEventListener("change", scheduleLivePreviewUpdate);
+  dom.formatSelect.addEventListener("change", () => {
+    setStatus("导出格式已更新，预览不需要重新渲染。", null);
+  });
   for (const control of [dom.modeSelect, dom.skinProtectInput]) {
-    control.addEventListener("change", scheduleLivePreviewUpdate);
+    control.addEventListener("change", scheduleSmartPreviewUpdate);
   }
   for (const input of document.querySelectorAll(".adjust-slider")) {
     input.addEventListener("input", () => {
       updateAdjustmentLabels();
-      scheduleLivePreviewUpdate();
+      scheduleFastPreviewUpdate();
     });
   }
   for (const input of document.querySelectorAll(".hsl-slider")) {
-    input.addEventListener("input", scheduleLivePreviewUpdate);
+    input.addEventListener("input", scheduleFastPreviewUpdate);
   }
   dom.compareStage.addEventListener("pointerdown", (event) => {
     if (!state.activeOutput) return;
@@ -1493,11 +1705,11 @@ function bindEvents() {
     event.preventDefault();
   });
   dom.processBtn.addEventListener("click", processAll);
-  dom.downloadBtn.addEventListener("click", () => {
-    if (state.activeOutput) downloadUrl(state.activeOutput.url, state.activeOutput.name);
+  dom.downloadBtn.addEventListener("click", async () => {
+    if (state.activeOutputIndex >= 0) await exportOutput(state.activeOutputIndex);
   });
-  dom.downloadAllBtn.addEventListener("click", () => {
-    for (const output of state.outputs) downloadUrl(output.url, output.name);
+  dom.downloadAllBtn.addEventListener("click", async () => {
+    await exportAllOutputs();
   });
 }
 
