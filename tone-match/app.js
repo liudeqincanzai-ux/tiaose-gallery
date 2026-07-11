@@ -172,12 +172,48 @@ function hueCss(channel, shift = 0, saturation = 76, lightness = 48) {
 
 function hslGradient(channel, axis) {
   if (axis === "h") {
-    return `linear-gradient(90deg, ${hueCss(channel, -30 / 360)}, ${hueCss(channel)}, ${hueCss(channel, 30 / 360)})`;
+    return `linear-gradient(90deg, ${hueCss(channel, -36 / 360, 82, 46)}, ${hueCss(channel, -18 / 360, 82, 48)}, ${hueCss(channel, 0, 82, 50)}, ${hueCss(channel, 18 / 360, 82, 48)}, ${hueCss(channel, 36 / 360, 82, 46)})`;
   }
   if (axis === "s") {
-    return `linear-gradient(90deg, ${hueCss(channel, 0, 10, 52)}, ${hueCss(channel, 0, 58, 50)}, ${hueCss(channel, 0, 96, 48)})`;
+    return `linear-gradient(90deg, hsl(${Math.round(HSL_CENTERS[channel] * 360)} 0% 48%), ${hueCss(channel, 0, 42, 48)}, ${hueCss(channel, 0, 96, 48)})`;
   }
-  return `linear-gradient(90deg, ${hueCss(channel, 0, 70, 18)}, ${hueCss(channel, 0, 70, 50)}, ${hueCss(channel, 0, 86, 78)})`;
+  return `linear-gradient(90deg, ${hueCss(channel, 0, 64, 20)}, ${hueCss(channel, 0, 70, 50)}, ${hueCss(channel, 0, 78, 78)})`;
+}
+
+function adjustmentGradient(param) {
+  switch (param) {
+    case "temperature":
+      return "linear-gradient(90deg, #2f6fb2 0%, #b8c4bc 50%, #d7b22c 100%)";
+    case "tint":
+      return "linear-gradient(90deg, #48a35d 0%, #b8c4bc 50%, #c04a9b 100%)";
+    case "vibrance":
+      return "linear-gradient(90deg, #8d9690 0%, #aeb8b2 42%, #2a7f62 68%, #c9312b 100%)";
+    case "saturation":
+      return "linear-gradient(90deg, #8f9692 0%, #aeb8b2 42%, #d6ad2d 62%, #31a58f 76%, #c9312b 100%)";
+    case "exposure":
+    case "highlights":
+    case "whites":
+      return "linear-gradient(90deg, #303634 0%, #aeb8b2 50%, #f5f2df 100%)";
+    case "shadows":
+    case "blacks":
+      return "linear-gradient(90deg, #111614 0%, #78837d 50%, #d7ded8 100%)";
+    case "contrast":
+      return "linear-gradient(90deg, #7d8580 0%, #b8c4bc 50%, #202422 100%)";
+    default:
+      return "linear-gradient(90deg, #6f7872 0%, #b8c4bc 50%, #26735a 100%)";
+  }
+}
+
+function rangePercent(input) {
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 100);
+  return ((Number(input.value) - min) / Math.max(1, max - min)) * 100;
+}
+
+function signedValue(value, decimals = 0) {
+  const numeric = Number(value);
+  const text = decimals > 0 ? numeric.toFixed(decimals) : String(Math.round(numeric));
+  return numeric > 0 ? `+${text}` : text;
 }
 
 function renderHslControls() {
@@ -202,12 +238,16 @@ function renderHslControls() {
       const track = document.createElement("span");
       track.className = "hsl-track";
       track.style.setProperty("--track-gradient", hslGradient(channel, axis.key));
-      track.innerHTML = '<span class="range-end min">-100</span><span class="range-end max">100</span>';
 
       const current = document.createElement("span");
       current.className = "hsl-current";
-      current.dataset.hslValueFor = `${channel}-${axis.key}`;
+      current.dataset.hslBubbleFor = `${channel}-${axis.key}`;
       current.textContent = "0";
+
+      const rowValue = document.createElement("span");
+      rowValue.className = "hsl-row-value";
+      rowValue.dataset.hslValueFor = `${channel}-${axis.key}`;
+      rowValue.textContent = "0";
 
       const input = document.createElement("input");
       input.className = "hsl-slider";
@@ -220,7 +260,7 @@ function renderHslControls() {
       input.setAttribute("aria-label", `${HSL_LABELS[channel]}${axis.title}`);
 
       track.append(current, input);
-      row.append(name, track);
+      row.append(name, track, rowValue);
       section.appendChild(row);
     }
 
@@ -573,6 +613,8 @@ function buildStats(samples) {
   const allB = [];
   const skinHues = [];
   const skinSats = [];
+  const skinValues = [];
+  const skinLumas = [];
   const skinRedGreen = [];
   const skinGreenBlue = [];
   const warmSats = [];
@@ -614,6 +656,8 @@ function buildStats(samples) {
     if (skin >= 0.42) {
       skinHues.push(sample.hue);
       skinSats.push(sample.hsvSat);
+      skinValues.push(sample.value);
+      skinLumas.push(sample.y);
       skinRedGreen.push(sample.r - sample.g);
       skinGreenBlue.push(sample.g - sample.b);
     }
@@ -719,6 +763,8 @@ function buildStats(samples) {
     contrast: Math.max(0.05, p75 - p25),
     skinHue: skinHues.length >= 80 ? median(skinHues, 26 / 360) : 26 / 360,
     skinSat: skinSats.length >= 80 ? clamp(median(skinSats, 0.22), 0.06, 0.44) : 0.22,
+    skinValue: skinValues.length >= 80 ? clamp(quantile(skinValues, 0.58, 0.62), 0.16, 0.94) : 0.62,
+    skinLuma: skinLumas.length >= 80 ? clamp(quantile(skinLumas, 0.58, 0.46), 0.12, 0.86) : quantileSorted(ySorted, 0.55),
     skinRedGreen: skinRedGreen.length >= 80 ? clamp(median(skinRedGreen, 0.06), -0.01, 0.18) : 0.06,
     skinGreenBlue: skinGreenBlue.length >= 80 ? clamp(median(skinGreenBlue, 0.065), 0.015, 0.18) : 0.065,
     skinSampleCount: skinHues.length,
@@ -967,6 +1013,7 @@ function transformLutColor(r, g, b, refStats, targetStats, toneCurve, settings, 
   const colorMask = smoothstep(0.025, 0.16, srcHsv.s);
   const skinConfidence = settings.skinProtect ? softSkinConfidence(r, g, b, srcHsv, srcY) : 0;
   const redConfidence = redAccentConfidence(srcHsv, srcY) * (1 - skinConfidence * 0.72);
+  const greenConfidence = greenPlantConfidence(srcHsv, srcY) * (1 - skinConfidence * 0.86) * (1 - redConfidence * 0.55);
 
   let [tr, tg, tb] = fitRgbToLuma(r, g, b, toneY);
   const sourceRatio = interpRow(targetStats.balanceRows, srcY);
@@ -1005,10 +1052,10 @@ function transformLutColor(r, g, b, refStats, targetStats, toneCurve, settings, 
   }
 
   if (skinConfidence > 0.001 && refStats.skinSampleCount >= 80 && targetStats.skinSampleCount >= 80) {
-    const w = skinConfidence * (settings.skinProtect ? 0.46 : 0.68);
-    hueDelta += clamp(circularDelta(targetStats.skinHue, refStats.skinHue), -16 / 360, 16 / 360) * w;
-    satLog += Math.log(clamp(refStats.skinSat / Math.max(0.04, targetStats.skinSat), 0.72, 1.28)) * w;
-    valueShift += clamp(refStats.lumaMedian - targetStats.lumaMedian, -0.08, 0.08) * w * 0.32;
+    const w = skinConfidence * (settings.skinProtect ? 0.62 : 0.78);
+    hueDelta += clamp(circularDelta(targetStats.skinHue, refStats.skinHue), -20 / 360, 20 / 360) * w;
+    satLog += Math.log(clamp(refStats.skinSat / Math.max(0.04, targetStats.skinSat), 0.64, 1.42)) * w;
+    valueShift += clamp(refStats.skinLuma - targetStats.skinLuma, -0.10, 0.10) * w * 0.54;
     totalWeight += w;
   }
 
@@ -1021,6 +1068,24 @@ function transformLutColor(r, g, b, refStats, targetStats, toneCurve, settings, 
     outHsv.h += avgHueDelta * params.hueWeight * chromaStrength;
     outHsv.s = clamp01(outHsv.s * Math.exp(avgSatLog * params.satWeight * chromaStrength));
     outHsv.v = clamp01(outHsv.v + avgValueShift * params.toneWeight * chromaStrength * 0.62);
+  }
+
+  if (skinConfidence > 0.001 && refStats.skinSampleCount >= 80 && targetStats.skinSampleCount >= 80) {
+    const skinW = skinConfidence * strength * (settings.skinProtect ? 0.46 : 0.62) * (1 - highlightMask * 0.20);
+    const skinSatTarget = clamp(refStats.skinSat, srcHsv.s * 0.70, srcHsv.s * 1.34);
+    const skinValueTarget = clamp(refStats.skinValue, srcHsv.v - 0.10, srcHsv.v + 0.10);
+    outHsv.h += clamp(circularDelta(outHsv.h, refStats.skinHue), -14 / 360, 14 / 360) * skinW * 0.34;
+    outHsv.s = mix(outHsv.s, skinSatTarget, skinW * 0.42);
+    outHsv.v = mix(outHsv.v, skinValueTarget, skinW * 0.30);
+  }
+
+  if (greenConfidence > 0.001 && refStats.greenSampleCount >= 40) {
+    const greenW = greenConfidence * strength * (0.74 + settings.localStrength * 0.22) * (1 - highlightMask * 0.12);
+    const greenSatTarget = clamp(refStats.greenSatP75 * 0.92, srcHsv.s * 0.62, srcHsv.s * 1.55);
+    const greenValueTarget = clamp(refStats.greenValueP70, srcHsv.v - 0.12, srcHsv.v + 0.14);
+    outHsv.h += circularDelta(outHsv.h, refStats.greenHue) * greenW * 0.34;
+    outHsv.s = mix(outHsv.s, greenSatTarget, greenW * 0.58);
+    outHsv.v = mix(outHsv.v, greenValueTarget, greenW * 0.42);
   }
 
   if (redConfidence > 0.001 && refStats.redSampleCount >= 40) {
@@ -1232,17 +1297,39 @@ function updateAdjustmentLabels() {
   for (const input of document.querySelectorAll(".adjust-slider")) {
     const param = input.dataset.param;
     const valueEl = document.querySelector(`[data-value-for="${param}"]`);
+    input.style.setProperty("--track-gradient", adjustmentGradient(param));
+    input.style.setProperty("--range-percent", `${rangePercent(input)}%`);
+    input.classList.toggle("has-value", Number(input.value) !== 0);
     if (!valueEl) continue;
-    if (param === "exposure") valueEl.textContent = (Number(input.value) / 100).toFixed(2);
-    else valueEl.textContent = String(Number(input.value));
+    if (param === "exposure") valueEl.textContent = signedValue(Number(input.value) / 100, 2);
+    else valueEl.textContent = signedValue(Number(input.value));
   }
 }
 
 function updateHslLabels() {
   for (const input of document.querySelectorAll(".hsl-slider")) {
-    const valueEl = document.querySelector(`[data-hsl-value-for="${input.dataset.channel}-${input.dataset.axis}"]`);
-    if (valueEl) valueEl.textContent = String(Number(input.value));
+    const key = `${input.dataset.channel}-${input.dataset.axis}`;
+    const value = Number(input.value);
+    const text = signedValue(value);
+    const valueEl = document.querySelector(`[data-hsl-value-for="${key}"]`);
+    const bubbleEl = document.querySelector(`[data-hsl-bubble-for="${key}"]`);
+    const trackEl = input.closest(".hsl-track");
+    const position = `${rangePercent(input)}%`;
+    if (trackEl) trackEl.style.setProperty("--value-position", position);
+    if (valueEl) valueEl.textContent = text;
+    if (bubbleEl) {
+      bubbleEl.textContent = text;
+      bubbleEl.classList.toggle("is-visible", value !== 0);
+    }
   }
+}
+
+function resetControlToZero(input) {
+  input.value = "0";
+  if (input.classList.contains("hsl-slider")) updateHslLabels();
+  else updateAdjustmentLabels();
+  saveCurrentParams();
+  scheduleFastPreviewUpdate();
 }
 
 function readParamsFromControls() {
@@ -1958,12 +2045,14 @@ function bindEvents() {
       updateAdjustmentLabels();
       scheduleFastPreviewUpdate();
     });
+    input.addEventListener("dblclick", () => resetControlToZero(input));
   }
   for (const input of document.querySelectorAll(".hsl-slider")) {
     input.addEventListener("input", () => {
       updateHslLabels();
       scheduleFastPreviewUpdate();
     });
+    input.addEventListener("dblclick", () => resetControlToZero(input));
   }
   dom.compareStage.addEventListener("pointerdown", (event) => {
     if (!state.activeOutput) return;
@@ -2005,5 +2094,7 @@ function bindEvents() {
 }
 
 renderHslControls();
+updateAdjustmentLabels();
+updateHslLabels();
 bindEvents();
 refreshFileLists();
